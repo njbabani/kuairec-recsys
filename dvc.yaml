@@ -48,3 +48,45 @@ stages:
     metrics:
       - ${data.split_summary_path}:
           cache: false
+
+  als_search:
+    cmd: python -m recsys.experiments.als_search
+    deps:
+      - ${data.splits_dir}
+      - src/recsys/config.py
+      - src/recsys/io.py
+      - src/recsys/tracking.py
+      - src/recsys/evaluation/concentration.py
+      - src/recsys/evaluation/ranking.py
+      - src/recsys/evaluation/selection.py
+      - src/recsys/experiments/als_search.py
+      - src/recsys/experiments/runner.py
+      - src/recsys/models/als.py
+      - src/recsys/models/base.py
+    params:
+      - als_search
+      - evaluation
+    metrics:
+      - ${data.metrics_dir}/als_search.json:
+          cache: false
+
+  baselines:
+    cmd: python -m recsys.experiments.baselines
+    deps:
+      - ${data.splits_dir}
+      - src/recsys/config.py
+      - src/recsys/io.py
+      - src/recsys/tracking.py
+      - src/recsys/evaluation/concentration.py
+      - src/recsys/evaluation/ranking.py
+      - src/recsys/experiments/baselines.py
+      - src/recsys/experiments/runner.py
+      - src/recsys/models/als.py
+      - src/recsys/models/base.py
+      - src/recsys/models/popularity.py
+    params:
+      - baselines
+      - evaluation
+    metrics:
+      - ${data.metrics_dir}/baselines.json:
+          cache: false

@@ -8,7 +8,8 @@ KuaiRec comes from Kuaishou, a TikTok-style app. Besides a normal logged feed, i
 and videos we know how each user reacted to (almost) every video, so an offline A/B test can
 show each arm different videos from that set and look up the real reaction.
 
-> Status: **Phase 1 complete** (data pipeline, EDA, bias-aware labels and splits). See the
+> Status: **Phase 2 complete** (data pipeline, EDA, debiased labels, evaluation harness,
+> tracked baselines). See the
 > [roadmap](#roadmap).
 
 ## What this project demonstrates
@@ -21,11 +22,11 @@ show each arm different videos from that set and look up the real reaction.
 | Exploratory analysis | [EDA notebook](notebooks/01_eda.ipynb): duration bias, exposure bias, collection windows | Done |
 | Bias-aware labeling | Duration-debiased relevance labels (log-spaced length buckets), fitted on train only, with a residual-bias metric | Done |
 | Evaluation design | Temporal train/valid split; fully observed matrix split by user into tune (selection) and test | Done |
-| Classical recsys | Popularity + ALS matrix factorisation baselines | Planned |
+| Classical recsys | Random, popularity (views vs. engagement with empirical-Bayes smoothing), ALS matrix factorisation with grid search | Done |
 | Deep learning | Two-tower retrieval model in PyTorch (Apple MPS) | Planned |
 | Learning to rank | LightGBM LambdaRank re-ranker + SHAP explanations | Planned |
-| Offline evaluation | NDCG / Recall@K, coverage, diversity, segment breakdowns | Planned |
-| Experiment tracking | MLflow (local runs + model registry) and Weights & Biases (dashboards, sweeps) | Planned |
+| Offline evaluation | Per-user NDCG / precision / recall / MAP@K with bootstrap CIs, paired model comparisons, coverage, Gini, popularity bias | Done |
+| Experiment tracking | Every run logged to MLflow (local) and Weights & Biases (offline by default), W&B Sweeps config for Bayesian HPO | Done |
 | A/B testing | Power analysis, A/A tests, SRM check, CUPED, sequential testing | Planned |
 | Demo | Streamlit app: user lookup, model leaderboard, interactive A/B lab | Planned |
 
@@ -39,6 +40,8 @@ git clone <this-repo> && cd recommender
 make setup   # create the environment from uv.lock
 make data    # download KuaiRec (432 MB), validate, label and split
 make eda     # re-run the EDA notebook and refresh reports/figures
+make experiments  # ALS search + baselines, logged to MLflow and W&B (~3 min)
+make results      # refresh the results notebook and figures
 make test    # run the test suite
 ```
 
@@ -50,7 +53,8 @@ The pipeline is defined in [`dvc.yaml`](dvc.yaml); `dvc repro` re-runs only the 
 code, parameters or inputs changed, and `dvc.lock` pins the exact hash of every output.
 
 ```
-download ──> prepare ──> split ──> (train ──> evaluate ──> ab_test: planned)
+download ──> prepare ──> split ──┬──> als_search    (ALS grid on the tune users)
+                                 └──> baselines     (all baselines + paired comparison)
 ```
 
 | Stage | Does | Output |
@@ -58,6 +62,8 @@ download ──> prepare ──> split ──> (train ──> evaluate ──> a
 | `download` | Streams `KuaiRec.zip` from Zenodo with retries, verifies its MD5, writes atomically; reuses a verified local copy | `data/raw/KuaiRec.zip` |
 | `prepare` | Cleans and types six tables, checks train/eval leakage and referential integrity, validates schemas | `data/processed/*.parquet`, [`reports/data_summary.json`](reports/data_summary.json) |
 | `split` | Temporal train/valid split, user-hash tune/test split, fits debiased labels on train, labels all splits | `data/splits/{train,valid,tune,test}.parquet`, [`reports/split_summary.json`](reports/split_summary.json) |
+| `als_search` | Fits an ALS grid on train, scores it on the tune users, logs every trial | [`reports/metrics/als_search.json`](reports/metrics/als_search.json) |
+| `baselines` | Fits every baseline, evaluates on the tune users, paired comparison with the reference | [`reports/metrics/baselines.json`](reports/metrics/baselines.json) |
 
 No DVC remote is configured: the raw data is public, so `dvc repro` rebuilds everything from
 Zenodo, and `dvc.lock` records the hash of every output so any drift shows up in `dvc status`.
@@ -92,6 +98,58 @@ neither. So validation is used for training-time checks, and model selection use
 set of fully observed users instead.
 
 ![Daily views with the validation window](reports/figures/06_daily_views_and_split.png)
+
+## Baseline results (tune users)
+
+Details and charts in [`notebooks/02_baselines.ipynb`](notebooks/02_baselines.ipynb). Each model
+ranks every candidate video for each of the 299 tune users; metrics are per user, then averaged.
+These are **selection-set scores**: the same users chose ALS's hyperparameters (see below for
+the correction); final numbers will come from the untouched test users.
+
+| Model | NDCG@10 [95% CI] | Coverage@10 | Popularity of recommendations |
+|---|---|---|---|
+| random | 0.164 [0.143, 0.185] | 59% | 50th percentile |
+| popularity by views | 0.184 [0.162, 0.206] | 0.3% | 100th percentile |
+| popularity by engagement | 0.217 [0.195, 0.240] | 0.3% | 66th percentile |
+| **ALS (tuned)** | **0.274** [0.246, 0.302] | 22% | 81st percentile |
+
+- **The EDA hypothesis holds:** ranking by view count barely beats random, ranking by engagement
+  rate is the strongest non-personalized baseline.
+- **Paired comparisons are the right test.** Separate intervals for ALS and engagement
+  popularity overlap, but on the same users ALS is better by **+0.057 NDCG@10
+  [+0.031, +0.083]**: pairing removes each user's own base rate, the biggest source of variance
+  (the same idea behind paired designs in A/B tests). The gain is uneven: ALS wins for 57% of
+  users. Intervals cover user sampling only, not seeds or the choice of candidate videos.
+- **Winner's curse, corrected.** ALS's settings were picked from 36 trials on these same users.
+  A bootstrap over users (pick the best trial in-sample, score it on the users left out)
+  estimates **0.015 NDCG@10** of selection optimism, so ~0.259 is the fairer expectation for new
+  users, still well above every popularity baseline.
+- **Accuracy vs. popularity bias.** Across the ALS trials, the more accurate settings recommend
+  more popular videos; the chosen one draws its top 10 from around the 81st popularity
+  percentile. The top settings are within 0.001 of each other (a flat plateau).
+- **What the evaluation actually tests.** Tune users have *no* training views of the 3,327
+  candidate videos, so ALS must transfer taste learned from their other videos (median ~33
+  positive views) to new ones. ALS uses Hu et al.'s confidence `1 + alpha·count`; users with no
+  positive training views fall back to the average user vector.
+
+![Paired comparison with the strongest popularity baseline](reports/figures/09_baselines_paired_comparison.png)
+
+![ALS trials: accuracy vs popularity of recommendations](reports/figures/10_als_accuracy_vs_popularity.png)
+
+## Experiment tracking
+
+Every training run is logged to both trackers through one small interface
+([`tracking.py`](src/recsys/tracking.py)):
+
+- **MLflow** (local, `mlflow.db`): `make mlflow-ui`, then open http://127.0.0.1:5000.
+- **Weights & Biases** runs *offline* by default, so nothing is uploaded and no account is
+  needed. To publish: `wandb login` once, then either run with `WANDB_MODE=online` or upload past
+  runs with `wandb sync wandb/offline-run-*`.
+- **W&B Sweeps** (Bayesian search, needs a login): `make sweep-als`, then start the
+  `wandb agent ...` command it prints. The local grid (`make experiments`) needs no account.
+  Sweeps also select on the tune users, so re-check any sweep winner before trusting it.
+- MLflow runs are tagged with the git commit (and whether the tree was dirty). Note that
+  `wandb sync` uploads run metadata such as hostname and file paths.
 
 ## Evaluation design and limitations
 
@@ -151,11 +209,16 @@ Findings from building the `prepare` stage (full numbers in `reports/data_summar
 │   │   ├── labels.py        # duration-debiased relevance labels
 │   │   ├── split.py         # train/valid/tune/test split + labeling stage
 │   │   └── categories.py    # English names for the Chinese category labels
+│   ├── tracking.py          # MLflow + W&B behind one interface
 │   ├── evaluation/
+│   │   ├── ranking.py       # per-user metrics, bootstrap CIs, paired comparisons
 │   │   └── concentration.py # Gini, Lorenz curve, top-k share
+│   ├── models/              # random, popularity, ALS (common Recommender protocol)
+│   ├── experiments/         # baselines + ALS search (DVC stages), W&B sweep trial
 │   └── viz/
 │       └── style.py         # chart style with a colorblind-safe palette
 ├── notebooks/               # jupytext .py sources + executed .ipynb
+├── sweeps/                  # W&B sweep configs
 ├── tests/                   # synthetic fixtures; no network or real data needed
 └── reports/                 # git-tracked pipeline metrics and figures
 ```
@@ -164,7 +227,7 @@ Findings from building the `prepare` stage (full numbers in `reports/data_summar
 
 0. **Setup & data pipeline** (done)
 1. **EDA, debiased labels and train/validation split** (done)
-2. Evaluation harness + popularity and ALS baselines, tracked in MLflow
+2. **Evaluation harness, popularity and ALS baselines, MLflow + W&B tracking** (done)
 3. Two-tower neural retrieval model
 4. LightGBM re-ranker with feature engineering and SHAP
 5. A/B testing framework on the fully observed matrix

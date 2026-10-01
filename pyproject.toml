@@ -11,12 +11,17 @@ authors = [{ name = "Nikhil J. Babani" }]
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "httpx>=0.28",
+    "implicit>=0.7.3",
     "matplotlib>=3.9",
+    "mlflow>=3.16.1",
+    "numpy>=2.5.3",
     "pandera[polars]>=0.30",
     "polars>=1.40",
     "pydantic>=2.10",
     "pyyaml>=6.0",
+    "scipy>=1.18.1",
     "tqdm>=4.66",
+    "wandb>=0.30.0",
 ]
 
 [dependency-groups]
@@ -63,6 +68,10 @@ select = ["E", "F", "I", "B", "UP", "SIM", "N", "RUF", "PTH", "DTZ", "PT", "S"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra --strict-markers"
+filterwarnings = [
+    # Raised inside MLflow's own SQLAlchemy models, not by this project.
+    "ignore:The ``noload`` loader strategy is deprecated:DeprecationWarning",
+]
 markers = [
     "integration: exercises a full pipeline stage end to end (still offline, synthetic data)",
     "data: needs the real processed dataset; skipped when it is absent (e.g. in CI)",

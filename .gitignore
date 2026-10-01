@@ -16,10 +16,11 @@ htmlcov/
 # Notebooks
 .ipynb_checkpoints/
 
-# MLflow (local tracking store)
+# Experiment tracking (local MLflow store, offline W&B runs)
 mlruns/
 mlartifacts/
 mlflow.db
+wandb/
 
 # OS / editors
 .DS_Store

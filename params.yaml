@@ -10,6 +10,7 @@ data:
   summary_path: reports/data_summary.json
   splits_dir: data/splits
   split_summary_path: reports/split_summary.json
+  metrics_dir: reports/metrics
 
 label:
   # People watch ~7.5 s of a video whatever its length, so raw watch_ratio mostly measures
@@ -26,3 +27,38 @@ split:
   # tune/test: small_matrix (fully observed) split by a stable hash of salt:user_id.
   tune_user_share: 0.2
   assignment_salt: kuairec-tune-v1
+
+evaluation:
+  # Per-user ranking metrics on the tune users (fully observed), averaged over users,
+  # with 95% bootstrap confidence intervals. Model selection uses select_metric.
+  ks: [10, 50]
+  bootstrap_samples: 1000
+  seed: 42
+  select_metric: ndcg_at_10
+
+baselines:
+  random:
+    seed: 42
+  popularity_engagement:
+    # Pseudo-views pulling each video's positive rate towards the global rate (empirical Bayes)
+    prior_strength: 50
+  als:
+    factors: 64
+    regularization: 0.1
+    alpha: 1
+    iterations: 15
+    seed: 42
+
+als_search:
+  factors: [16, 32, 64]
+  regularization: [0.1, 0.3, 1.0]
+  alpha: [0, 1, 4, 16]
+  iterations: 15
+  seed: 42
+
+tracking:
+  backends: [mlflow, wandb]
+  experiment: kuairec-recsys
+  mlflow_tracking_uri: sqlite:///mlflow.db
+  wandb_project: kuairec-recsys
+  wandb_mode: offline  # after `wandb login`, set WANDB_MODE=online to publish runs

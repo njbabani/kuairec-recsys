@@ -18,6 +18,7 @@ data:
   summary_path: reports/data_summary.json
   splits_dir: data/splits
   split_summary_path: reports/split_summary.json
+  metrics_dir: reports/metrics
 label:
   bucket_width_ratio: 1.15
   min_views_per_bucket: 10000
@@ -26,6 +27,34 @@ split:
   valid_start: "2020-08-30"
   tune_user_share: 0.2
   assignment_salt: kuairec-tune-v1
+evaluation:
+  ks: [10, 50]
+  bootstrap_samples: 1000
+  seed: 42
+  select_metric: ndcg_at_10
+baselines:
+  random:
+    seed: 42
+  popularity_engagement:
+    prior_strength: 50
+  als:
+    factors: 64
+    regularization: 0.05
+    alpha: 20
+    iterations: 15
+    seed: 42
+als_search:
+  factors: [32, 64]
+  regularization: [0.01, 0.1]
+  alpha: [5, 20]
+  iterations: 15
+  seed: 42
+tracking:
+  backends: [mlflow, wandb]
+  experiment: kuairec-recsys
+  mlflow_tracking_uri: sqlite:///mlflow.db
+  wandb_project: kuairec-recsys
+  wandb_mode: offline
 """
 
 
@@ -69,6 +98,42 @@ def test_load_params_parses_label_and_split_sections(tmp_path):
     ids=["quantile", "width-ratio", "min-views", "bad-date", "tune-share", "empty-salt"],
 )
 def test_load_params_rejects_invalid_label_and_split_settings(tmp_path, old, new):
+    with pytest.raises(ValidationError):
+        load_params(write_params(tmp_path, VALID_PARAMS.replace(old, new)))
+
+
+def test_load_params_parses_modelling_and_tracking_sections(tmp_path):
+    params = load_params(write_params(tmp_path, VALID_PARAMS))
+
+    assert params.evaluation.ks == (10, 50)
+    assert params.baselines.als.factors == 64
+    assert params.als_search.alpha == (5.0, 20.0)
+    assert params.tracking.backends == ("mlflow", "wandb")
+    assert params.tracking.wandb_mode == "offline"
+
+
+@pytest.mark.parametrize(
+    ("old", "new"),
+    [
+        ("select_metric: ndcg_at_10", "select_metric: ndcg_at_7"),
+        ("select_metric: ndcg_at_10", "select_metric: auc"),
+        ("backends: [mlflow, wandb]", "backends: [mlflow, tensorboard]"),
+        ("wandb_mode: offline", "wandb_mode: sometimes"),
+        ("factors: [32, 64]", "factors: []"),
+        ("ks: [10, 50]", "ks: [10, 10]"),
+        ("backends: [mlflow, wandb]", "backends: [mlflow, mlflow]"),
+    ],
+    ids=[
+        "metric-k-not-evaluated",
+        "unknown-metric",
+        "unknown-backend",
+        "bad-mode",
+        "empty-grid",
+        "duplicate-k",
+        "duplicate-backend",
+    ],
+)
+def test_load_params_rejects_invalid_modelling_settings(tmp_path, old, new):
     with pytest.raises(ValidationError):
         load_params(write_params(tmp_path, VALID_PARAMS.replace(old, new)))
 
