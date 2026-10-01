@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: help setup data eda results experiments mlflow-ui sweep-als pipeline test lint format check
+.PHONY: help setup data features eda results experiments mlflow-ui sweep-als pipeline test lint format check
 
 help: ## List available commands
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*## "}; {printf "  %-12s %s\n", $$1, $$2}'
@@ -10,14 +10,18 @@ setup: ## Create the Python 3.12 environment from uv.lock
 data: ## Download KuaiRec, build validated tables and labeled splits (DVC)
 	uv run dvc repro split
 
+features: ## Build model-ready user and video feature tables (DVC)
+	uv run dvc repro features
+
 eda: ## Re-run the EDA notebook (after `make data`) and refresh reports/figures
 	uv run jupytext --to notebook --execute notebooks/01_eda.py
 
-results: ## Re-run the results notebook (after `make experiments`)
+results: ## Re-run the results notebooks (after `make experiments`)
 	uv run jupytext --to notebook --execute notebooks/02_baselines.py
+	uv run jupytext --to notebook --execute notebooks/03_two_tower.py
 
-experiments: ## ALS search + baselines on the tune users (tracked in MLflow and W&B)
-	uv run dvc repro als_search baselines
+experiments: ## Model searches + leaderboard on the tune users (tracked in MLflow and W&B)
+	uv run dvc repro als_search two_tower_search leaderboard
 
 mlflow-ui: ## Browse tracked runs at http://127.0.0.1:5000
 	uv run mlflow ui --backend-store-uri sqlite:///mlflow.db

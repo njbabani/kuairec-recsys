@@ -31,3 +31,6 @@ wandb/
 data/raw/
 data/processed/
 data/splits/
+
+# Resumable training checkpoints (removed automatically once a stage succeeds)
+checkpoints/

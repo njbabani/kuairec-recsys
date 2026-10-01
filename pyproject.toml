@@ -20,6 +20,7 @@ dependencies = [
     "pydantic>=2.10",
     "pyyaml>=6.0",
     "scipy>=1.18.1",
+    "torch>=2.14.1",
     "tqdm>=4.66",
     "wandb>=0.30.0",
 ]
@@ -40,6 +41,16 @@ notebooks = [
 
 [tool.uv]
 default-groups = ["dev", "notebooks"]
+
+# Linux (CI) gets the CPU-only PyTorch build instead of the multi-GB CUDA one; macOS wheels
+# from PyPI already include the Apple-silicon (MPS) backend.
+[tool.uv.sources]
+torch = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux'" }]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
 
 [build-system]
 requires = ["hatchling"]

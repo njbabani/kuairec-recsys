@@ -2,7 +2,7 @@
 
 from datetime import date
 from pathlib import Path
-from typing import Literal
+from typing import Literal, Self
 
 import yaml
 from pydantic import (
@@ -11,6 +11,7 @@ from pydantic import (
     Field,
     HttpUrl,
     NonNegativeFloat,
+    PositiveFloat,
     PositiveInt,
     model_validator,
 )
@@ -32,6 +33,9 @@ class DataParams(_FrozenModel):
     splits_dir: Path
     split_summary_path: Path
     metrics_dir: Path
+    features_dir: Path
+    checkpoints_dir: Path  # resumable training state (not versioned; deleted once a stage succeeds)
+    models_dir: Path  # trained models written by the leaderboard (versioned by DVC)
 
 
 class LabelParams(_FrozenModel):
@@ -78,10 +82,70 @@ class ALSParams(_FrozenModel):
     seed: int
 
 
-class BaselineParams(_FrozenModel):
+class CategoryAffinityParams(_FrozenModel):
+    # Pseudo-views pulling a user's per-category positive rate towards the category's rate
+    prior_strength: PositiveFloat
+
+
+TwoTowerLoss = Literal["bce", "softmax"]
+Device = Literal["auto", "cpu", "mps"]
+
+
+def _require_distinct(values: tuple, name: str) -> None:
+    if len(set(values)) != len(values):
+        raise ValueError(f"{name} values must be distinct, got {values}")
+
+
+class _TwoTowerTraining(_FrozenModel):
+    """Settings shared by single two-tower models, seed ensembles and the search."""
+
+    hidden_dim: PositiveInt
+    epochs: PositiveInt
+    batch_size: int = Field(ge=2)  # the softmax loss needs other rows as negatives
+    learning_rate: PositiveFloat
+    weight_decay: NonNegativeFloat
+    # cpu is deterministic (and as fast as MPS for a model this small); auto = MPS when present
+    device: Device
+
+
+class _TwoTowerArchitecture(_TwoTowerTraining):
+    loss: TwoTowerLoss
+    embedding_dim: PositiveInt
+    temperature: PositiveFloat | None = None  # softmax loss only
+
+    @model_validator(mode="after")
+    def _temperature_only_for_softmax(self) -> Self:
+        if (self.loss == "softmax") != (self.temperature is not None):
+            raise ValueError("temperature must be set for the softmax loss, and only for it")
+        return self
+
+
+class TwoTowerParams(_TwoTowerArchitecture):
+    """One two-tower model."""
+
+    seed: int
+
+
+class TwoTowerEnsembleParams(_TwoTowerArchitecture):
+    """One two-tower model per seed; the leaderboard scores their average."""
+
+    seeds: tuple[int, ...] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _seeds_are_distinct(self) -> Self:
+        _require_distinct(self.seeds, "seeds")
+        return self
+
+    def member(self, seed: int) -> TwoTowerParams:
+        return TwoTowerParams(**self.model_dump(exclude={"seeds"}), seed=seed)
+
+
+class ModelParams(_FrozenModel):
     random: RandomParams
     popularity_engagement: EngagementPopularityParams
+    category_affinity: CategoryAffinityParams
     als: ALSParams
+    two_tower: TwoTowerEnsembleParams
 
 
 class ALSSearchParams(_FrozenModel):
@@ -90,6 +154,25 @@ class ALSSearchParams(_FrozenModel):
     alpha: tuple[NonNegativeFloat, ...] = Field(min_length=1)
     iterations: PositiveInt
     seed: int
+
+
+class TwoTowerSearchParams(_TwoTowerTraining):
+    """Grid over loss x embedding size (x temperature, for the softmax loss only).
+
+    Every configuration is trained once per seed and scored after each epoch, so the epoch
+    count is searched too; selection uses the average over seeds, not one lucky run.
+    """
+
+    loss: tuple[TwoTowerLoss, ...] = Field(min_length=1)
+    embedding_dim: tuple[PositiveInt, ...] = Field(min_length=1)
+    temperature: tuple[PositiveFloat, ...] = Field(min_length=1)
+    seeds: tuple[int, ...] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _grid_values_are_distinct(self) -> Self:
+        for name in ("loss", "embedding_dim", "temperature", "seeds"):
+            _require_distinct(getattr(self, name), name)
+        return self
 
 
 class TrackingParams(_FrozenModel):
@@ -111,8 +194,9 @@ class Params(_FrozenModel):
     label: LabelParams
     split: SplitParams
     evaluation: EvaluationParams
-    baselines: BaselineParams
+    models: ModelParams
     als_search: ALSSearchParams
+    two_tower_search: TwoTowerSearchParams
     tracking: TrackingParams
 
 

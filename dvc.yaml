@@ -49,6 +49,16 @@ stages:
       - ${data.split_summary_path}:
           cache: false
 
+  features:
+    cmd: python -m recsys.data.features
+    deps:
+      - ${data.processed_dir}
+      - src/recsys/config.py
+      - src/recsys/io.py
+      - src/recsys/data/features.py
+    outs:
+      - ${data.features_dir}
+
   als_search:
     cmd: python -m recsys.experiments.als_search
     deps:
@@ -70,23 +80,60 @@ stages:
       - ${data.metrics_dir}/als_search.json:
           cache: false
 
-  baselines:
-    cmd: python -m recsys.experiments.baselines
+  two_tower_search:
+    cmd: python -m recsys.experiments.two_tower_search
     deps:
       - ${data.splits_dir}
+      - ${data.features_dir}
       - src/recsys/config.py
       - src/recsys/io.py
       - src/recsys/tracking.py
       - src/recsys/evaluation/concentration.py
       - src/recsys/evaluation/ranking.py
-      - src/recsys/experiments/baselines.py
+      - src/recsys/evaluation/selection.py
+      - src/recsys/experiments/runner.py
+      - src/recsys/experiments/two_tower_search.py
+      - src/recsys/models/base.py
+      - src/recsys/models/two_tower/checkpoint.py
+      - src/recsys/models/two_tower/encoding.py
+      - src/recsys/models/two_tower/network.py
+      - src/recsys/models/two_tower/recommender.py
+      - src/recsys/models/two_tower/training.py
+    params:
+      - two_tower_search
+      - evaluation
+    metrics:
+      - ${data.metrics_dir}/two_tower_search.json:
+          cache: false
+
+  leaderboard:
+    cmd: python -m recsys.experiments.leaderboard
+    deps:
+      - ${data.splits_dir}
+      - ${data.features_dir}
+      - src/recsys/config.py
+      - src/recsys/io.py
+      - src/recsys/tracking.py
+      - src/recsys/evaluation/concentration.py
+      - src/recsys/evaluation/ranking.py
+      - src/recsys/experiments/leaderboard.py
       - src/recsys/experiments/runner.py
       - src/recsys/models/als.py
       - src/recsys/models/base.py
+      - src/recsys/models/category_affinity.py
       - src/recsys/models/popularity.py
+      - src/recsys/models/two_tower/checkpoint.py
+      - src/recsys/models/two_tower/encoding.py
+      - src/recsys/models/two_tower/ensemble.py
+      - src/recsys/models/two_tower/network.py
+      - src/recsys/models/two_tower/recommender.py
+      - src/recsys/models/two_tower/training.py
     params:
-      - baselines
+      - models
       - evaluation
+    outs:
+      # The trained two-tower members, for later stages (re-ranker, demo). Versioned by DVC.
+      - ${data.models_dir}/two_tower
     metrics:
-      - ${data.metrics_dir}/baselines.json:
+      - ${data.metrics_dir}/leaderboard.json:
           cache: false

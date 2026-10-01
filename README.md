@@ -8,9 +8,8 @@ KuaiRec comes from Kuaishou, a TikTok-style app. Besides a normal logged feed, i
 and videos we know how each user reacted to (almost) every video, so an offline A/B test can
 show each arm different videos from that set and look up the real reaction.
 
-> Status: **Phase 2 complete** (data pipeline, EDA, debiased labels, evaluation harness,
-> tracked baselines). See the
-> [roadmap](#roadmap).
+> Status: **Phase 3 complete** (data pipeline, EDA, debiased labels, evaluation harness,
+> tracked baselines, two-tower neural model). See the [roadmap](#roadmap).
 
 ## What this project demonstrates
 
@@ -22,8 +21,10 @@ show each arm different videos from that set and look up the real reaction.
 | Exploratory analysis | [EDA notebook](notebooks/01_eda.ipynb): duration bias, exposure bias, collection windows | Done |
 | Bias-aware labeling | Duration-debiased relevance labels (log-spaced length buckets), fitted on train only, with a residual-bias metric | Done |
 | Evaluation design | Temporal train/valid split; fully observed matrix split by user into tune (selection) and test | Done |
-| Classical recsys | Random, popularity (views vs. engagement with empirical-Bayes smoothing), ALS matrix factorisation with grid search | Done |
-| Deep learning | Two-tower retrieval model in PyTorch (Apple MPS) | Planned |
+| Classical recsys | Random, popularity (views vs. engagement with empirical-Bayes smoothing), category affinity, ALS matrix factorisation with grid search | Done |
+| Feature pipeline | Label-free user and video feature tables (profile, categories, length) as their own DVC stage | Done |
+| Deep learning | Two-tower model in PyTorch (CPU or Apple MPS): pointwise vs. in-batch softmax with logQ correction, feature towers that can score unseen videos, multi-seed selection and seed ensembles | Done |
+| Training infrastructure | Atomic, resumable checkpoints (training state every epoch, search progress per scored epoch, `weights_only` loading); trained models versioned as DVC outputs | Done |
 | Learning to rank | LightGBM LambdaRank re-ranker + SHAP explanations | Planned |
 | Offline evaluation | Per-user NDCG / precision / recall / MAP@K with bootstrap CIs, paired model comparisons, coverage, Gini, popularity bias | Done |
 | Experiment tracking | Every run logged to MLflow (local) and Weights & Biases (offline by default), W&B Sweeps config for Bayesian HPO | Done |
@@ -40,8 +41,8 @@ git clone <this-repo> && cd recommender
 make setup   # create the environment from uv.lock
 make data    # download KuaiRec (432 MB), validate, label and split
 make eda     # re-run the EDA notebook and refresh reports/figures
-make experiments  # ALS search + baselines, logged to MLflow and W&B (~3 min)
-make results      # refresh the results notebook and figures
+make experiments  # model searches + leaderboard, logged to MLflow and W&B (~25 min on an M4)
+make results      # refresh the results notebooks and figures
 make test    # run the test suite
 ```
 
@@ -53,17 +54,22 @@ The pipeline is defined in [`dvc.yaml`](dvc.yaml); `dvc repro` re-runs only the 
 code, parameters or inputs changed, and `dvc.lock` pins the exact hash of every output.
 
 ```
-download ──> prepare ──> split ──┬──> als_search    (ALS grid on the tune users)
-                                 └──> baselines     (all baselines + paired comparison)
+download ──> prepare ──┬──> split ────┬──> als_search        (ALS grid on the tune users)
+                       │              ├──> two_tower_search  (two-tower grid, scored every epoch)
+                       └──> features ─┴──> leaderboard       (every model + paired comparisons)
 ```
+
+`two_tower_search` and `leaderboard` read both the splits and the features.
 
 | Stage | Does | Output |
 |---|---|---|
 | `download` | Streams `KuaiRec.zip` from Zenodo with retries, verifies its MD5, writes atomically; reuses a verified local copy | `data/raw/KuaiRec.zip` |
 | `prepare` | Cleans and types six tables, checks train/eval leakage and referential integrity, validates schemas | `data/processed/*.parquet`, [`reports/data_summary.json`](reports/data_summary.json) |
 | `split` | Temporal train/valid split, user-hash tune/test split, fits debiased labels on train, labels all splits | `data/splits/{train,valid,tune,test}.parquet`, [`reports/split_summary.json`](reports/split_summary.json) |
+| `features` | User features (profile categories, log counts) and video features (categories, log length); nothing derived from reactions | `data/features/{users,videos}.parquet` |
 | `als_search` | Fits an ALS grid on train, scores it on the tune users, logs every trial | [`reports/metrics/als_search.json`](reports/metrics/als_search.json) |
-| `baselines` | Fits every baseline, evaluates on the tune users, paired comparison with the reference | [`reports/metrics/baselines.json`](reports/metrics/baselines.json) |
+| `two_tower_search` | Trains each two-tower configuration once, scores it on tune after every epoch, logs a training curve per configuration | [`reports/metrics/two_tower_search.json`](reports/metrics/two_tower_search.json) |
+| `leaderboard` | Fits every model with its chosen settings, evaluates on the tune users, paired comparisons with engagement popularity and ALS; saves the trained two-tower members | [`reports/metrics/leaderboard.json`](reports/metrics/leaderboard.json), `models/two_tower/` |
 
 No DVC remote is configured: the raw data is public, so `dvc repro` rebuilds everything from
 Zenodo, and `dvc.lock` records the hash of every output so any drift shows up in `dvc status`.
@@ -136,6 +142,50 @@ the correction); final numbers will come from the untouched test users.
 
 ![ALS trials: accuracy vs popularity of recommendations](reports/figures/10_als_accuracy_vs_popularity.png)
 
+## Two-tower results (tune users)
+
+Details and charts in [`notebooks/03_two_tower.ipynb`](notebooks/03_two_tower.ipynb). Same users
+and protocol as above; ALS and the two-tower model were both tuned on these users.
+
+| Model | NDCG@10 [95% CI] | Recall@50 | Coverage@10 | Popularity of recommendations |
+|---|---|---|---|---|
+| category affinity | 0.199 [0.175, 0.223] | 0.020 | 6% | 59th percentile |
+| ALS (tuned) | 0.274 [0.246, 0.302] | 0.030 | 22% | 81st percentile |
+| **two-tower (3-seed ensemble)** | **0.298** [0.271, 0.325] | **0.035** | 11% | **49th percentile** |
+
+- **The objective matters more than the architecture.** The pointwise loss (*will this user like
+  this video, given it was shown?*) beats the in-batch softmax with logQ correction (*which
+  video did they like?*) in every configuration: 0.287 vs 0.252 seed-averaged. The pointwise loss
+  asks the same question as the evaluation and also learns from views that were not positive.
+  (With the same epochs, the softmax loss gets ~5x fewer updates, so this compares the two as
+  configured here.)
+- **One training run is a noisy measurement.** The first search picked a single-seed peak of
+  0.294 that retrained to 0.278. Across seeds a single run varies by ±0.003–0.006, as much as
+  the gaps being compared, so the search now trains every configuration with 3 seeds and
+  selects on the average (best: 0.287 ± 0.003, 0.277 after selection optimism of 0.010).
+  On CPU, training is deterministic: the leaderboard's retrained members match the search to
+  every digit.
+- **Against ALS, on the same users:** the ensemble gains **+0.024 NDCG@10 [−0.000, +0.048]**
+  and ranks better for 56% of users. That is borderline on the tune users; the untouched test
+  users will settle it. Against engagement popularity the gain is clear: **+0.081
+  [+0.058, +0.103]**, better for 67% of users.
+- **Accurate without leaning on popularity.** The two-tower model's top 10 sits at the 49th
+  popularity percentile (random is 50th) versus the 81st for ALS, and it has the best
+  recall@50.
+- **Category taste alone does not help.** Re-weighting engagement popularity by each user's
+  per-category lift *lowers* NDCG@10 (−0.018 [−0.034, −0.002]): first-level categories are too
+  coarse to describe taste, and the lifts add noise. Personalisation needs finer signals (ids,
+  embeddings).
+- **Overfitting is real and fast.** Every configuration peaks around epochs 5–7 and then
+  declines (the 64-dimensional pointwise model falls from 0.285 at epoch 5 to 0.260 at epoch
+  10, seed-averaged), which is why every epoch is scored.
+
+![Leaderboard](reports/figures/11_leaderboard.png)
+
+![Training curves of the two-tower search](reports/figures/13_two_tower_training_curves.png)
+
+![Accuracy vs popularity of recommendations, every model](reports/figures/14_accuracy_vs_popularity.png)
+
 ## Experiment tracking
 
 Every training run is logged to both trackers through one small interface
@@ -150,6 +200,23 @@ Every training run is logged to both trackers through one small interface
   Sweeps also select on the tune users, so re-check any sweep winner before trusting it.
 - MLflow runs are tagged with the git commit (and whether the tree was dirty). Note that
   `wandb sync` uploads run metadata such as hostname and file paths.
+
+## Checkpointing and saved models
+
+Long training is resumable, and finished models are kept:
+
+- **Training checkpoints.** `TwoTowerRecommender.fit(..., checkpoint_path=...)` saves the
+  weights, optimizer state and shuffling state after every epoch; rerunning with the same
+  settings and data continues after the last saved epoch (and reproduces an uninterrupted run
+  exactly on CPU). A checkpoint made for other settings or data is ignored.
+- **Search progress.** `two_tower_search` records every scored (configuration, seed, epoch);
+  if it is interrupted, `dvc repro` picks up where it stopped instead of redoing finished work.
+  The resume state lives in `checkpoints/` and is deleted once the stage succeeds.
+- **Saved models.** The leaderboard saves each trained two-tower member to `models/two_tower/`
+  (a DVC output); `TwoTowerEnsemble.load("models/two_tower")` restores it, features included.
+- **Safe by construction.** Files are written to a temporary name and renamed (a crash never
+  leaves a half-written checkpoint), and read with `torch.load(weights_only=True)`, so opening
+  a checkpoint cannot run code.
 
 ## Evaluation design and limitations
 
@@ -171,6 +238,18 @@ What this design does and doesn't guarantee:
 - **Users differ a lot in how much they watch**, even after the duration fix, so pooled metrics
   like overall AUC mostly measure *which users* engage. Ranking metrics are computed per user.
 - **The test users are never opened** during analysis; the EDA uses the tune users only.
+- **Training noise is part of the uncertainty.** One two-tower training run varies by about
+  ±0.006 NDCG@10 between seeds, which the user-bootstrap intervals do not include. Searches
+  select on seed averages and the leaderboard reports the seed spread.
+- **Selection optimism.** ALS and the two-tower model were tuned on the tune users; the
+  searches estimate how much that flatters them, and the test users give the final numbers.
+- **User profile features** (activity level, follower counts) come with the dataset and may
+  summarise the whole collection period, including weeks that overlap the evaluation matrix.
+  They are user-level, not (user, video) reactions, so they cannot leak a label, but they are
+  not strictly "as of" the training cut-off.
+- **Cold-start videos are not evaluated.** The video tower can score a video it never saw in
+  training (from its categories and length), but every tune/test candidate has training views,
+  so that ability is tested on synthetic data only.
 
 ## Data notes
 
@@ -203,6 +282,7 @@ Findings from building the `prepare` stage (full numbers in `reports/data_summar
 │   ├── io.py                # shared parquet / JSON writers
 │   ├── hashing.py           # stable SHA-256 user assignment (tune/test, A/B arms)
 │   ├── data/
+│   │   ├── features.py      # label-free user and video feature tables
 │   │   ├── download.py      # checksummed, atomic download
 │   │   ├── prepare.py       # clean, leakage-check, validate, write parquet
 │   │   ├── schemas.py       # pandera data contracts
@@ -213,14 +293,17 @@ Findings from building the `prepare` stage (full numbers in `reports/data_summar
 │   ├── evaluation/
 │   │   ├── ranking.py       # per-user metrics, bootstrap CIs, paired comparisons
 │   │   └── concentration.py # Gini, Lorenz curve, top-k share
-│   ├── models/              # random, popularity, ALS (common Recommender protocol)
-│   ├── experiments/         # baselines + ALS search (DVC stages), W&B sweep trial
+│   ├── models/              # random, popularity, category affinity, ALS (Recommender protocol)
+│   │   └── two_tower/       # encoding, towers + losses, training, checkpoints, seed ensemble
+│   ├── experiments/         # leaderboard + model searches (DVC stages), W&B sweep trial
 │   └── viz/
 │       └── style.py         # chart style with a colorblind-safe palette
 ├── notebooks/               # jupytext .py sources + executed .ipynb
 ├── sweeps/                  # W&B sweep configs
 ├── tests/                   # synthetic fixtures; no network or real data needed
-└── reports/                 # git-tracked pipeline metrics and figures
+├── reports/                 # git-tracked pipeline metrics and figures
+├── models/                  # trained models (DVC outputs, not in git)
+└── checkpoints/             # resume state of interrupted training (temporary, not in git)
 ```
 
 ## Roadmap
@@ -228,7 +311,7 @@ Findings from building the `prepare` stage (full numbers in `reports/data_summar
 0. **Setup & data pipeline** (done)
 1. **EDA, debiased labels and train/validation split** (done)
 2. **Evaluation harness, popularity and ALS baselines, MLflow + W&B tracking** (done)
-3. Two-tower neural retrieval model
+3. **Two-tower neural model, category-affinity baseline, feature pipeline** (done)
 4. LightGBM re-ranker with feature engineering and SHAP
 5. A/B testing framework on the fully observed matrix
 6. Streamlit demo app

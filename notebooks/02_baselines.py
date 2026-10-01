@@ -15,7 +15,8 @@
 # # Baselines and ALS tuning
 #
 # Every number here comes from `reports/metrics/*.json`, written by the DVC stages
-# `baselines` and `als_search` (`make experiments`). All models are trained on the logged feed
+# `leaderboard` and `als_search` (`make experiments`). This notebook covers the Phase 2 models;
+# the two-tower model and the category-affinity baseline are in `03_two_tower`. All models are trained on the logged feed
 # before Aug 30 and evaluated on the fully observed **tune** users: each user's whole candidate
 # list is ranked, metrics are computed per user and then averaged, with 95% bootstrap intervals.
 # The same runs are in MLflow (`make mlflow-ui`) and W&B (offline under `wandb/`).
@@ -40,9 +41,11 @@ def find_repo_root(start: Path) -> Path:
 
 ROOT = find_repo_root(Path.cwd())
 METRICS, FIGURES = ROOT / "reports/metrics", ROOT / "reports/figures"
-baselines = json.loads((METRICS / "baselines.json").read_text(encoding="utf-8"))
+report = json.loads((METRICS / "leaderboard.json").read_text(encoding="utf-8"))
 search = json.loads((METRICS / "als_search.json").read_text(encoding="utf-8"))
 METRIC = search["select_metric"]
+BASELINES = ("random", "popularity_views", "popularity_engagement", "als")
+REFERENCE = "popularity_engagement"
 style.apply_style()
 
 
@@ -67,7 +70,8 @@ leaderboard = pl.DataFrame(
             "gini_at_10": m["gini_at_10"],
             "popularity_pct_at_10": m["popularity_pct_at_10"],
         }
-        for name, m in baselines["models"].items()
+        for name, m in report["models"].items()
+        if name in BASELINES
     ]
 ).sort(METRIC, descending=True)
 leaderboard
@@ -82,9 +86,13 @@ leaderboard
 # model's seed. The win rate shows how evenly a gain is spread across users.
 
 # %%
-paired = baselines["paired_vs_reference"]
+paired = report["paired"][REFERENCE]
 differences = pl.DataFrame(
-    [{"model": name, **values} for name, values in paired["differences"].items()]
+    [
+        {"model": name, **values}
+        for name, values in paired["differences"].items()
+        if name in BASELINES
+    ]
 ).sort("mean")
 
 fig, ax = plt.subplots(figsize=(8, 3.4))
@@ -120,12 +128,12 @@ ax.set_yticks(list(positions), differences["model"].to_list())
 ax.tick_params(axis="y", length=0)
 ax.grid(axis="y", visible=False)
 ax.grid(axis="x", visible=True)
-ax.set_xlabel(f"difference in {METRIC} vs {paired['reference']} (same users, 95% CI)")
+ax.set_xlabel(f"difference in {METRIC} vs {REFERENCE} (same users, 95% CI)")
 best = differences.row(-1, named=True)
 style.add_title(
     ax,
-    f"{best['model']} beats {paired['reference']} by {best['mean']:+.3f} {METRIC}",
-    f"Paired bootstrap over {baselines['models']['als']['users_evaluated']} tune users "
+    f"{best['model']} beats {REFERENCE} by {best['mean']:+.3f} {METRIC}",
+    f"Paired bootstrap over {report['models']['als']['users_evaluated']} tune users "
     f"(user-sampling uncertainty) · {best['model']} wins for {best['win_rate']:.0%} of users",
 )
 save(fig, "09_baselines_paired_comparison")
@@ -160,7 +168,7 @@ trials.select("factors", "regularization", "alpha", METRIC, "popularity_pct_at_1
 ).head(5)
 
 # %%
-reference = baselines["models"][paired["reference"]]
+reference = report["models"][REFERENCE]
 fig, ax = plt.subplots(figsize=(8, 4.2))
 ax.scatter(
     trials["popularity_pct_at_10"],
@@ -184,7 +192,7 @@ ax.scatter(
 )
 ax.axhline(reference[METRIC], color=style.INK_MUTED, linewidth=1)
 ax.annotate(
-    paired["reference"],
+    REFERENCE,
     (0, reference[METRIC]),
     xycoords=("axes fraction", "data"),
     xytext=(4, 4),

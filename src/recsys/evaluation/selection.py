@@ -5,6 +5,8 @@ score on those same users, the score is optimistic: part of the winning margin i
 will not repeat on new users.
 """
 
+from typing import Any
+
 import numpy as np
 import polars as pl
 
@@ -36,3 +38,26 @@ def selection_optimism(scores: pl.DataFrame, *, n_samples: int, seed: int) -> fl
         best = int(np.argmax(matrix[in_sample].mean(axis=0)))
         gaps.append(matrix[in_sample, best].mean() - matrix[left_out, best].mean())
     return float(np.mean(gaps))
+
+
+def summarise_search(
+    trials: list[dict[str, Any]],
+    per_user_scores: dict[str, pl.Series],
+    select_metric: str,
+    *,
+    n_samples: int,
+    seed: int,
+) -> dict[str, Any]:
+    """The best trial plus how much picking it on the same users flatters its score.
+
+    ``per_user_scores`` holds each trial's per-user ``select_metric`` (same users, same order).
+    """
+    best = max(trials, key=lambda trial: trial["metrics"][select_metric])
+    optimism = selection_optimism(pl.DataFrame(per_user_scores), n_samples=n_samples, seed=seed)
+    return {
+        "select_metric": select_metric,
+        "best": best,
+        "selection_optimism": optimism,
+        "best_score_optimism_corrected": best["metrics"][select_metric] - optimism,
+        "trials": trials,
+    }

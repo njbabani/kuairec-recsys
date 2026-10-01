@@ -19,6 +19,9 @@ data:
   splits_dir: data/splits
   split_summary_path: reports/split_summary.json
   metrics_dir: reports/metrics
+  features_dir: data/features
+  checkpoints_dir: checkpoints
+  models_dir: models
 label:
   bucket_width_ratio: 1.15
   min_views_per_bucket: 10000
@@ -32,23 +35,46 @@ evaluation:
   bootstrap_samples: 1000
   seed: 42
   select_metric: ndcg_at_10
-baselines:
+models:
   random:
     seed: 42
   popularity_engagement:
     prior_strength: 50
+  category_affinity:
+    prior_strength: 20
   als:
     factors: 64
     regularization: 0.05
     alpha: 20
     iterations: 15
     seed: 42
+  two_tower:
+    loss: bce
+    embedding_dim: 64
+    hidden_dim: 128
+    epochs: 5
+    batch_size: 4096
+    learning_rate: 0.001
+    weight_decay: 0.0
+    seeds: [42, 43, 44]
+    device: auto
 als_search:
   factors: [32, 64]
   regularization: [0.01, 0.1]
   alpha: [5, 20]
   iterations: 15
   seed: 42
+two_tower_search:
+  loss: [bce, softmax]
+  embedding_dim: [32, 64]
+  hidden_dim: 128
+  epochs: 8
+  batch_size: 4096
+  learning_rate: 0.001
+  weight_decay: 0.0
+  temperature: [0.05, 0.1]
+  seeds: [1, 2]
+  device: auto
 tracking:
   backends: [mlflow, wandb]
   experiment: kuairec-recsys
@@ -106,8 +132,17 @@ def test_load_params_parses_modelling_and_tracking_sections(tmp_path):
     params = load_params(write_params(tmp_path, VALID_PARAMS))
 
     assert params.evaluation.ks == (10, 50)
-    assert params.baselines.als.factors == 64
+    assert params.models.als.factors == 64
+    assert params.models.category_affinity.prior_strength == 20
+    assert params.models.two_tower.loss == "bce"
     assert params.als_search.alpha == (5.0, 20.0)
+    assert params.two_tower_search.loss == ("bce", "softmax")
+    assert params.two_tower_search.temperature == (0.05, 0.1)
+    assert params.two_tower_search.seeds == (1, 2)
+    assert params.models.two_tower.seeds == (42, 43, 44)
+    assert params.models.two_tower.member(43).seed == 43
+    assert params.data.checkpoints_dir == Path("checkpoints")
+    assert params.data.features_dir == Path("data/features")
     assert params.tracking.backends == ("mlflow", "wandb")
     assert params.tracking.wandb_mode == "offline"
 
@@ -122,6 +157,16 @@ def test_load_params_parses_modelling_and_tracking_sections(tmp_path):
         ("factors: [32, 64]", "factors: []"),
         ("ks: [10, 50]", "ks: [10, 10]"),
         ("backends: [mlflow, wandb]", "backends: [mlflow, mlflow]"),
+        ("loss: bce\n", "loss: hinge\n"),
+        ("batch_size: 4096\n    learning", "batch_size: 1\n    learning"),
+        ("device: auto\n", "device: cuda\n"),
+        ("loss: [bce, softmax]", "loss: []"),
+        ("embedding_dim: [32, 64]", "embedding_dim: [32, 32]"),
+        ("temperature: [0.05, 0.1]", "temperature: [0.1, 0.1]"),
+        ("    loss: bce\n", "    loss: bce\n    temperature: 0.1\n"),
+        ("    loss: bce\n", "    loss: softmax\n"),
+        ("seeds: [42, 43, 44]", "seeds: [42, 42]"),
+        ("seeds: [42, 43, 44]", "seeds: []"),
     ],
     ids=[
         "metric-k-not-evaluated",
@@ -131,6 +176,16 @@ def test_load_params_parses_modelling_and_tracking_sections(tmp_path):
         "empty-grid",
         "duplicate-k",
         "duplicate-backend",
+        "unknown-loss",
+        "batch-without-negatives",
+        "unknown-device",
+        "empty-loss-grid",
+        "duplicate-grid-value",
+        "duplicate-temperature",
+        "temperature-with-bce",
+        "softmax-without-temperature",
+        "duplicate-seed",
+        "no-seeds",
     ],
 )
 def test_load_params_rejects_invalid_modelling_settings(tmp_path, old, new):

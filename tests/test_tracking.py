@@ -54,6 +54,7 @@ def test_flatten_params_joins_nested_keys_with_dots():
 def test_noop_tracker_accepts_runs_and_metrics():
     with NoopTracker().run("trial", {"a": 1}) as run:
         run.log_metrics({"ndcg_at_10": 0.5})
+        run.log_metrics({"train_loss": 0.9}, step=1)
 
 
 def test_in_memory_tracker_records_params_metrics_and_status():
@@ -67,9 +68,30 @@ def test_in_memory_tracker_records_params_metrics_and_status():
             "name": "trial",
             "params": {"als.factors": 8},
             "metrics": {"ndcg_at_10": 0.5},
+            "history": [],
             "status": "FINISHED",
         }
     ]
+
+
+def test_in_memory_tracker_keeps_metrics_logged_per_step_and_their_latest_values():
+    tracker = InMemoryTracker()
+
+    with tracker.run("trial", {}) as run:
+        run.log_metrics({"train_loss": 0.9}, step=1)
+        run.log_metrics({"train_loss": 0.5}, step=2)
+
+    assert tracker.runs[0]["history"] == [(1, {"train_loss": 0.9}), (2, {"train_loss": 0.5})]
+    assert tracker.runs[0]["metrics"] == {"train_loss": 0.5}
+
+
+def test_multi_tracker_forwards_the_step_to_every_backend():
+    first, second = InMemoryTracker(), InMemoryTracker()
+
+    with MultiTracker((first, second)).run("trial", {}) as run:
+        run.log_metrics({"train_loss": 0.9}, step=3)
+
+    assert first.runs[0]["history"] == second.runs[0]["history"] == [(3, {"train_loss": 0.9})]
 
 
 def test_multi_tracker_fans_out_and_closes_every_run_even_on_error():
@@ -111,6 +133,23 @@ def test_mlflow_tracker_records_params_and_metrics(tmp_path):
 
 
 @pytest.mark.integration
+def test_mlflow_tracker_records_a_metric_history_per_step(tmp_path):
+    from mlflow.tracking import MlflowClient
+
+    uri = f"sqlite:///{tmp_path / 'mlflow.db'}"
+    tracker = MLflowTracker(uri, experiment="test", artifact_root=tmp_path / "artifacts")
+
+    with tracker.run("trial", {}) as run:
+        run.log_metrics({"train_loss": 0.9}, step=1)
+        run.log_metrics({"train_loss": 0.5}, step=2)
+
+    client = MlflowClient(tracking_uri=uri)
+    [record] = client.search_runs([client.get_experiment_by_name("test").experiment_id])
+    history = client.get_metric_history(record.info.run_id, "train_loss")
+    assert [(m.step, m.value) for m in history] == [(1, 0.9), (2, 0.5)]
+
+
+@pytest.mark.integration
 def test_mlflow_run_is_marked_failed_even_when_logging_params_fails(tmp_path):
     from mlflow.exceptions import MlflowException
     from mlflow.tracking import MlflowClient
@@ -134,6 +173,7 @@ def test_wandb_tracker_runs_in_disabled_mode_and_propagates_failures(tmp_path):
     tracker = WandbTracker(project="test", mode="disabled", directory=tmp_path)
 
     with tracker.run("trial", {"a": 1}) as run:
+        run.log_metrics({"train_loss": 0.9}, step=1)
         run.log_metrics({"ndcg_at_10": 0.1})
 
     def crashing_trial() -> None:

@@ -7,7 +7,7 @@ Two ways to run the same trial:
 * a W&B Bayesian sweep (needs ``wandb login``): ``make sweep-als`` creates it from
   ``sweeps/als.yaml``; each ``wandb agent`` trial runs this module with ``--sweep-trial``.
 
-The best grid configuration is written to the report; copying it into ``baselines.als`` in
+The best grid configuration is written to the report; copying it into ``models.als`` in
 params.yaml is a deliberate, reviewable step.
 """
 
@@ -22,9 +22,9 @@ from typing import Any
 import polars as pl
 
 from recsys.config import ALSParams, ALSSearchParams, EvaluationParams, load_params
-from recsys.evaluation.ranking import EvaluationResult, popularity_percentiles
-from recsys.evaluation.selection import selection_optimism
-from recsys.experiments.runner import EVAL_SPLIT, fit_and_evaluate, load_split
+from recsys.evaluation.ranking import EvaluationResult
+from recsys.evaluation.selection import summarise_search
+from recsys.experiments.runner import EVAL_SPLIT, fit_and_evaluate, load_experiment_data
 from recsys.io import write_json
 from recsys.models.als import ALSRecommender
 from recsys.tracking import Tracker, build_tracker
@@ -65,11 +65,6 @@ def run_trial(
     )
 
 
-def _load_inputs(splits_dir: Path) -> tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame]:
-    train, eval_split = load_split(splits_dir, "train"), load_split(splits_dir, EVAL_SPLIT)
-    return train, eval_split, popularity_percentiles(train, eval_split["video_id"])
-
-
 def run_search(
     splits_dir: Path,
     report_path: Path,
@@ -77,7 +72,7 @@ def run_search(
     evaluation: EvaluationParams,
     tracker: Tracker,
 ) -> dict[str, Any]:
-    train, eval_split, popularity = _load_inputs(splits_dir)
+    data = load_experiment_data(splits_dir)
     trials = []
     per_user_scores: dict[str, pl.Series] = {}
     for number, als in enumerate(als_grid(search), start=1):
@@ -88,7 +83,9 @@ def run_search(
             "evaluation": evaluation.model_dump(),
         }
         with tracker.run(f"als_search/{number:02d}", run_params) as run:
-            result, fit_seconds = run_trial(als, train, eval_split, popularity, evaluation)
+            result, fit_seconds = run_trial(
+                als, data.train, data.eval_split, data.popularity, evaluation
+            )
             run.log_metrics({**result.summary, "fit_seconds": fit_seconds})
         metrics = result.summary
         trials.append({"params": als.model_dump(), "metrics": metrics})
@@ -101,20 +98,14 @@ def run_search(
             metrics[evaluation.select_metric],
         )
 
-    best = max(trials, key=lambda trial: trial["metrics"][evaluation.select_metric])
     # The winner was picked on these same users, so its score is optimistic (winner's curse).
-    optimism = selection_optimism(
-        pl.DataFrame(per_user_scores),
+    report = summarise_search(
+        trials,
+        per_user_scores,
+        evaluation.select_metric,
         n_samples=evaluation.bootstrap_samples,
         seed=evaluation.seed,
     )
-    report = {
-        "select_metric": evaluation.select_metric,
-        "best": best,
-        "selection_optimism": optimism,
-        "best_score_optimism_corrected": best["metrics"][evaluation.select_metric] - optimism,
-        "trials": trials,
-    }
     write_json(report, report_path)
     return report
 
@@ -132,10 +123,12 @@ def sweep_trial(
         import wandb
 
         init = wandb.init
-    train, eval_split, popularity = _load_inputs(splits_dir)
+    data = load_experiment_data(splits_dir)
     with init() as run:
         als = params_from_sweep_config(run.config)
-        result, fit_seconds = run_trial(als, train, eval_split, popularity, evaluation)
+        result, fit_seconds = run_trial(
+            als, data.train, data.eval_split, data.popularity, evaluation
+        )
         metrics = {**result.summary, "fit_seconds": fit_seconds}
         run.log(metrics)
     return metrics

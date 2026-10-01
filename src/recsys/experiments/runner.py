@@ -1,12 +1,13 @@
 """Shared steps for every experiment: load splits, fit a model, evaluate it on held-out users."""
 
 import time
+from dataclasses import dataclass
 from pathlib import Path
 
 import polars as pl
 
 from recsys.config import EvaluationParams
-from recsys.evaluation.ranking import EvaluationResult, evaluate
+from recsys.evaluation.ranking import EvaluationResult, evaluate, popularity_percentiles
 from recsys.models.base import Recommender
 
 # Model selection and every reported metric so far use the tune users; test stays untouched.
@@ -18,6 +19,26 @@ PAIR_COLUMNS = ("user_id", "video_id")
 def load_split(splits_dir: Path, name: str) -> pl.DataFrame:
     """The columns every model needs from a labeled split."""
     return pl.read_parquet(splits_dir / f"{name}.parquet", columns=list(MODEL_COLUMNS))
+
+
+@dataclass(frozen=True)
+class ExperimentData:
+    train: pl.DataFrame
+    eval_split: pl.DataFrame
+    popularity: pl.DataFrame  # popularity percentile of every candidate video, from train
+
+
+def load_experiment_data(splits_dir: Path) -> ExperimentData:
+    train, eval_split = load_split(splits_dir, "train"), load_split(splits_dir, EVAL_SPLIT)
+    return ExperimentData(train, eval_split, popularity_percentiles(train, eval_split["video_id"]))
+
+
+def load_features(features_dir: Path) -> tuple[pl.DataFrame, pl.DataFrame]:
+    """The user and video feature tables written by the ``features`` stage."""
+    return (
+        pl.read_parquet(features_dir / "users.parquet"),
+        pl.read_parquet(features_dir / "videos.parquet"),
+    )
 
 
 def fit_and_evaluate(
@@ -36,13 +57,21 @@ def fit_and_evaluate(
     started = time.perf_counter()
     model.fit(train)
     fit_seconds = time.perf_counter() - started
+    return evaluate_model(model, eval_split, popularity, evaluation), round(fit_seconds, 2)
 
+
+def evaluate_model(
+    model: Recommender,
+    eval_split: pl.DataFrame,
+    popularity: pl.DataFrame,
+    evaluation: EvaluationParams,
+) -> EvaluationResult:
+    """Rank every user's candidates in ``eval_split`` with an already fitted ``model``."""
     scores = model.score(eval_split.select(PAIR_COLUMNS))
-    result = evaluate(
+    return evaluate(
         eval_split.select(MODEL_COLUMNS).with_columns(score=scores),
         ks=evaluation.ks,
         popularity=popularity,
         n_bootstrap=evaluation.bootstrap_samples,
         seed=evaluation.seed,
     )
-    return result, round(fit_seconds, 2)

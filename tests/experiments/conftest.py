@@ -36,3 +36,25 @@ def labeled_splits(tmp_path: Path, make_interactions) -> Path:
     train.write_parquet(splits_dir / "train.parquet")
     tune.write_parquet(splits_dir / "tune.parquet")
     return splits_dir
+
+
+@pytest.fixture
+def feature_tables(tmp_path: Path) -> Path:
+    """User and video features for the users (0-5) and videos (10-15) of ``labeled_splits``."""
+    features_dir = tmp_path / "features"
+    features_dir.mkdir()
+    pl.DataFrame(
+        {
+            "user_id": list(range(6)),
+            "user_active_degree": ["high_active"] * 3 + ["low_active"] * 3,
+            "log_register_days": [float(user) for user in range(6)],
+        }
+    ).write_parquet(features_dir / "users.parquet")
+    pl.DataFrame(
+        {
+            "video_id": list(range(10, 16)),
+            "category_ids": [[1]] * 3 + [[2]] * 3,
+            "log_duration_s": [1.0, 2.0, 3.0] * 2,
+        }
+    ).write_parquet(features_dir / "videos.parquet")
+    return features_dir

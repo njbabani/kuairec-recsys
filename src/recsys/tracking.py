@@ -21,7 +21,9 @@ from recsys.config import TrackingParams
 
 
 class TrackingRun(Protocol):
-    def log_metrics(self, metrics: Mapping[str, float]) -> None: ...
+    def log_metrics(self, metrics: Mapping[str, float], step: int | None = None) -> None:
+        """Log metrics; pass ``step`` (e.g. the epoch) to build a curve instead of one value."""
+        ...
 
 
 class Tracker(Protocol):
@@ -43,7 +45,7 @@ def flatten_params(params: Mapping[str, Any], prefix: str = "") -> dict[str, Any
 
 
 class _NoopRun:
-    def log_metrics(self, metrics: Mapping[str, float]) -> None:
+    def log_metrics(self, metrics: Mapping[str, float], step: int | None = None) -> None:
         return None
 
 
@@ -57,8 +59,10 @@ class _InMemoryRun:
     def __init__(self, record: dict[str, Any]) -> None:
         self._record = record
 
-    def log_metrics(self, metrics: Mapping[str, float]) -> None:
+    def log_metrics(self, metrics: Mapping[str, float], step: int | None = None) -> None:
         self._record["metrics"] |= dict(metrics)
+        if step is not None:
+            self._record["history"].append((step, dict(metrics)))
 
 
 class InMemoryTracker:
@@ -73,6 +77,7 @@ class InMemoryTracker:
             "name": name,
             "params": flatten_params(params),
             "metrics": {},
+            "history": [],
             "status": "RUNNING",
         }
         self.runs.append(record)
@@ -88,9 +93,9 @@ class _MultiRun:
     def __init__(self, runs: Sequence[TrackingRun]) -> None:
         self._runs = runs
 
-    def log_metrics(self, metrics: Mapping[str, float]) -> None:
+    def log_metrics(self, metrics: Mapping[str, float], step: int | None = None) -> None:
         for run in self._runs:
-            run.log_metrics(metrics)
+            run.log_metrics(metrics, step=step)
 
 
 class MultiTracker:
@@ -110,13 +115,16 @@ class _MLflowRun:
         self._client = client
         self._run_id = run_id
 
-    def log_metrics(self, metrics: Mapping[str, float]) -> None:
+    def log_metrics(self, metrics: Mapping[str, float], step: int | None = None) -> None:
         from mlflow.entities import Metric
 
         timestamp_ms = int(time.time() * 1000)
         self._client.log_batch(
             self._run_id,
-            metrics=[Metric(key, float(value), timestamp_ms, 0) for key, value in metrics.items()],
+            metrics=[
+                Metric(key, float(value), timestamp_ms, 0 if step is None else step)
+                for key, value in metrics.items()
+            ],
         )
 
 
@@ -166,8 +174,8 @@ class _WandbRun:
     def __init__(self, run: Any) -> None:
         self._run = run
 
-    def log_metrics(self, metrics: Mapping[str, float]) -> None:
-        self._run.log(dict(metrics))
+    def log_metrics(self, metrics: Mapping[str, float], step: int | None = None) -> None:
+        self._run.log(dict(metrics), step=step)
 
 
 class WandbTracker:

@@ -11,6 +11,9 @@ data:
   splits_dir: data/splits
   split_summary_path: reports/split_summary.json
   metrics_dir: reports/metrics
+  features_dir: data/features
+  checkpoints_dir: checkpoints  # resumable training state; removed once a stage succeeds
+  models_dir: models  # trained models from the leaderboard (DVC output)
 
 label:
   # People watch ~7.5 s of a video whatever its length, so raw watch_ratio mostly measures
@@ -36,18 +39,35 @@ evaluation:
   seed: 42
   select_metric: ndcg_at_10
 
-baselines:
+# Every model on the leaderboard (stage `leaderboard`). Searched models take the best
+# configuration their search stage reports (copied here by hand, so the choice is reviewable).
+models:
   random:
     seed: 42
   popularity_engagement:
     # Pseudo-views pulling each video's positive rate towards the global rate (empirical Bayes)
     prior_strength: 50
+  category_affinity:
+    # Pseudo-views pulling a user's positive rate in a category towards that category's rate
+    prior_strength: 20
   als:
     factors: 64
     regularization: 0.1
     alpha: 1
     iterations: 15
     seed: 42
+  two_tower:  # chosen from reports/metrics/two_tower_search.json
+    loss: bce
+    embedding_dim: 32
+    hidden_dim: 128
+    epochs: 7
+    batch_size: 4096
+    learning_rate: 0.001
+    weight_decay: 0.0
+    # One model per seed: the leaderboard reports their spread and scores their average
+    # (a single run varies by about +-0.006 NDCG@10, as much as the gaps being compared).
+    seeds: [42, 43, 44]
+    device: cpu  # deterministic, and as fast as MPS for a model this small
 
 als_search:
   factors: [16, 32, 64]
@@ -55,6 +75,20 @@ als_search:
   alpha: [0, 1, 4, 16]
   iterations: 15
   seed: 42
+
+two_tower_search:
+  # bce: is this view positive? (all logged views, matching what evaluation asks)
+  # softmax: which video did this user like? (positives only, in-batch negatives, logQ fix)
+  loss: [bce, softmax]
+  embedding_dim: [32, 64]
+  temperature: [0.1, 0.2]  # softmax only
+  seeds: [42, 43, 44]  # each configuration trains once per seed; selection uses the seed average
+  hidden_dim: 128
+  epochs: 10  # scored on tune after every epoch, so the epoch count is searched too
+  batch_size: 4096
+  learning_rate: 0.001
+  weight_decay: 0.0
+  device: cpu
 
 tracking:
   backends: [mlflow, wandb]
