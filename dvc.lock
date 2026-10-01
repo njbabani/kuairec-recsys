@@ -1,0 +1,108 @@
+schema: '2.0'
+stages:
+  download:
+    cmd: python -m recsys.data.download
+    deps:
+    - path: src/recsys/config.py
+      hash: md5
+      md5: 2adb56b8086007b70282d021365e9d38
+      size: 1545
+    - path: src/recsys/data/download.py
+      hash: md5
+      md5: f7df34ca3344dab4a7bce128d8c7d6ae
+      size: 4307
+    params:
+      params.yaml:
+        data.md5: 261550d472c48eff4990fb13c0e5bcf7
+        data.url: 
+          https://zenodo.org/api/records/18164998/files/KuaiRec.zip/content
+    outs:
+    - path: data/raw/KuaiRec.zip
+      hash: md5
+      md5: 261550d472c48eff4990fb13c0e5bcf7
+      size: 431964858
+  prepare:
+    cmd: python -m recsys.data.prepare
+    deps:
+    - path: data/raw/KuaiRec.zip
+      hash: md5
+      md5: 261550d472c48eff4990fb13c0e5bcf7
+      size: 431964858
+    - path: src/recsys/config.py
+      hash: md5
+      md5: 2adb56b8086007b70282d021365e9d38
+      size: 1545
+    - path: src/recsys/data/prepare.py
+      hash: md5
+      md5: c2466fa9d8a800a1a581ab4870fc5482
+      size: 9723
+    - path: src/recsys/data/schemas.py
+      hash: md5
+      md5: 0514b81d032cea6049a1408b25434977
+      size: 3819
+    - path: src/recsys/io.py
+      hash: md5
+      md5: d0eee65421e99c5c2f18df66f5ff0c45
+      size: 1104
+    outs:
+    - path: data/processed
+      hash: md5
+      md5: 1ec7d9456cafd416466d3ba680a73bd8.dir
+      size: 284526647
+      nfiles: 6
+    - path: reports/data_summary.json
+      hash: md5
+      md5: a5cdb242a6d64f0d4e19a7959241f65c
+      size: 733
+  split:
+    cmd: python -m recsys.data.split
+    deps:
+    - path: data/processed
+      hash: md5
+      md5: 1ec7d9456cafd416466d3ba680a73bd8.dir
+      size: 284526647
+      nfiles: 6
+    - path: src/recsys/config.py
+      hash: md5
+      md5: 2adb56b8086007b70282d021365e9d38
+      size: 1545
+    - path: src/recsys/data/labels.py
+      hash: md5
+      md5: 3e79cfb885442c3bee5ba625ce7ff5db
+      size: 6992
+    - path: src/recsys/data/schemas.py
+      hash: md5
+      md5: 0514b81d032cea6049a1408b25434977
+      size: 3819
+    - path: src/recsys/data/split.py
+      hash: md5
+      md5: d7764dac406f03a5d74d084a50458970
+      size: 8979
+    - path: src/recsys/hashing.py
+      hash: md5
+      md5: fa1a0281bc0b3ea76f0357126d5d3e00
+      size: 602
+    - path: src/recsys/io.py
+      hash: md5
+      md5: d0eee65421e99c5c2f18df66f5ff0c45
+      size: 1104
+    params:
+      params.yaml:
+        label:
+          bucket_width_ratio: 1.15
+          min_views_per_bucket: 10000
+          positive_quantile: 0.8
+        split:
+          valid_start: '2020-08-30'
+          tune_user_share: 0.2
+          assignment_salt: kuairec-tune-v1
+    outs:
+    - path: data/splits
+      hash: md5
+      md5: eb3ef3245a68e68dfed9072b97d773a8.dir
+      size: 272957510
+      nfiles: 4
+    - path: reports/split_summary.json
+      hash: md5
+      md5: 6e8297551e8d0f76e5d0ba748c7a860b
+      size: 3070

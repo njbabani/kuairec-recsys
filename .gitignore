@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+build/
+dist/
+
+# Tooling caches
+.pytest_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Notebooks
+.ipynb_checkpoints/
+
+# MLflow (local tracking store)
+mlruns/
+mlartifacts/
+mlflow.db
+
+# OS / editors
+.DS_Store
+.idea/
+.vscode/
+
+# Data is versioned by DVC, not git (DVC writes its own .gitignore entries for outputs)
+data/raw/
+data/processed/
+data/splits/

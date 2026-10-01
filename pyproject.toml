@@ -1,0 +1,78 @@
+[project]
+name = "kuairec-recsys"
+version = "0.1.0"
+description = "Two-stage short-video recommender on KuaiRec with a simulated A/B testing framework"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Nikhil J. Babani" }]
+# Capped at 3.12 on purpose: the upcoming ML stack (PyTorch, implicit, LightGBM, SHAP)
+# has the most reliable prebuilt Apple Silicon wheels there.
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "httpx>=0.28",
+    "matplotlib>=3.9",
+    "pandera[polars]>=0.30",
+    "polars>=1.40",
+    "pydantic>=2.10",
+    "pyyaml>=6.0",
+    "tqdm>=4.66",
+]
+
+[dependency-groups]
+dev = [
+    "dvc>=3.50",
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+    "ruff>=0.6",
+]
+# Notebooks are stored as jupytext .py files and executed headlessly with `make eda`.
+notebooks = [
+    "ipykernel>=6.29",
+    "jupytext>=1.16",
+    "nbconvert>=7.16",
+]
+
+[tool.uv]
+default-groups = ["dev", "notebooks"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/recsys"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+# Executed notebooks are generated from their jupytext .py source, which is what gets linted.
+extend-exclude = ["*.ipynb"]
+
+[tool.ruff.lint]
+# DTZ guards timezone correctness, PT pytest style, S security (bandit rules).
+select = ["E", "F", "I", "B", "UP", "SIM", "N", "RUF", "PTH", "DTZ", "PT", "S"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101"]
+# Notebooks: bare expressions display tables; chart text uses typographic characters (ρ, ×, –);
+# markdown tables in comments can't wrap.
+"notebooks/**" = ["B018", "E501", "RUF001", "RUF003"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
+markers = [
+    "integration: exercises a full pipeline stage end to end (still offline, synthetic data)",
+    "data: needs the real processed dataset; skipped when it is absent (e.g. in CI)",
+]
+
+[tool.coverage.run]
+source = ["recsys"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+fail_under = 80
+exclude_also = ['if __name__ == "__main__":']

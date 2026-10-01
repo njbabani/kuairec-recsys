@@ -1,0 +1,50 @@
+# Reproducible data + modelling pipeline. Run everything with `dvc repro`;
+# DVC re-runs a stage only when its deps, params or outputs change.
+
+stages:
+  download:
+    cmd: python -m recsys.data.download
+    deps:
+      - src/recsys/config.py
+      - src/recsys/data/download.py
+    params:
+      - data.url
+      - data.md5
+    outs:
+      # persist: DVC would otherwise delete the 432 MB archive before every re-run; kept in
+      # place, download.py reuses it when its MD5 still matches instead of re-downloading.
+      - ${data.archive_path}:
+          persist: true
+
+  prepare:
+    cmd: python -m recsys.data.prepare
+    deps:
+      - ${data.archive_path}
+      - src/recsys/config.py
+      - src/recsys/io.py
+      - src/recsys/data/prepare.py
+      - src/recsys/data/schemas.py
+    outs:
+      - ${data.processed_dir}
+    metrics:
+      - ${data.summary_path}:
+          cache: false
+
+  split:
+    cmd: python -m recsys.data.split
+    deps:
+      - ${data.processed_dir}
+      - src/recsys/config.py
+      - src/recsys/hashing.py
+      - src/recsys/io.py
+      - src/recsys/data/labels.py
+      - src/recsys/data/schemas.py
+      - src/recsys/data/split.py
+    params:
+      - label
+      - split
+    outs:
+      - ${data.splits_dir}
+    metrics:
+      - ${data.split_summary_path}:
+          cache: false

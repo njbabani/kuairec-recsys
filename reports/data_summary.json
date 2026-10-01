@@ -1,0 +1,37 @@
+{
+  "big_matrix": {
+    "rows": 11562802,
+    "users": 7176,
+    "videos": 10728,
+    "density": 0.1338,
+    "duplicate_rows_dropped": 968004,
+    "watch_ratio_p50": 0.7255,
+    "watch_ratio_p99": 4.7948,
+    "watch_ratio_max": 573.4571,
+    "null_event_time": 0
+  },
+  "small_matrix": {
+    "rows": 4676570,
+    "users": 1411,
+    "videos": 3327,
+    "density": 0.9962,
+    "duplicate_rows_dropped": 0,
+    "watch_ratio_p50": 0.7692,
+    "watch_ratio_p99": 3.5851,
+    "watch_ratio_max": 571.5214,
+    "null_event_time": 181992
+  },
+  "users": {
+    "rows": 7176
+  },
+  "video_categories": {
+    "rows": 10728
+  },
+  "video_captions": {
+    "rows": 10728
+  },
+  "video_daily_stats": {
+    "rows": 343341
+  },
+  "leakage_pairs": 0
+}

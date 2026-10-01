@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v10
+        with:
+          enable-cache: true
+
+      - name: Install dependencies from the lockfile
+        run: uv sync --locked
+
+      - name: Lint
+        run: |
+          uv run ruff check .
+          uv run ruff format --check .
+
+      # Parses dvc.yaml and resolves ${...} params, catching pipeline typos without any data.
+      - name: Validate DVC pipeline
+        run: uv run dvc dag
+
+      # Tests use synthetic KuaiRec-shaped fixtures, so CI never downloads the dataset.
+      - name: Test with coverage
+        run: uv run pytest --cov --cov-report=term-missing
