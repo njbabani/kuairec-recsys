@@ -25,6 +25,7 @@ data:
   retrieval_path: data/retrieval/two_tower_scores.parquet
   reranker_dir: data/reranker
   ab_dir: data/ab
+  demo_dir: data/demo
 label:
   bucket_width_ratio: 1.15
   min_views_per_bucket: 10000
@@ -131,6 +132,7 @@ def test_load_params_parses_data_section(tmp_path):
     assert params.data.md5 == "0123456789abcdef0123456789abcdef"
     assert params.data.archive_path == Path("data/raw/KuaiRec.zip")
     assert params.data.processed_dir == Path("data/processed")
+    assert params.data.demo_dir == Path("data/demo")
 
 
 def test_load_params_parses_label_and_split_sections(tmp_path):

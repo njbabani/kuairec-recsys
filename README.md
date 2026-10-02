@@ -8,10 +8,10 @@ KuaiRec comes from Kuaishou, a TikTok-style app. Besides a normal logged feed, i
 and videos we know how each user reacted to (almost) every video, so an offline A/B test can
 show each arm different videos from that set and look up the real reaction.
 
-> Status: **Phase 5 complete** (data pipeline, EDA, debiased labels, evaluation harness,
-> tracked baselines, two-tower neural model, two-stage re-ranking with SHAP, final test
-> evaluation, A/B testing framework checked against known true effects). See the
-> [roadmap](#roadmap).
+> Status: **all six phases complete**: data pipeline, EDA, debiased labels, evaluation
+> harness, tracked baselines, two-tower neural model, two-stage re-ranking with SHAP, final
+> test evaluation, an A/B testing framework checked against known true effects, and a local
+> [Streamlit demo](#streamlit-demo). See the [roadmap](#roadmap).
 
 ## What this project demonstrates
 
@@ -31,7 +31,7 @@ show each arm different videos from that set and look up the real reaction.
 | Offline evaluation | Per-user NDCG / precision / recall / MAP@K with bootstrap CIs, paired model comparisons, coverage, Gini, popularity bias; one final evaluation on untouched test users | Done |
 | Experiment tracking | Every run logged to MLflow (local) and Weights & Biases (offline by default), W&B Sweeps config for Bayesian HPO | Done |
 | A/B testing | Power analysis (MDE, sample size with its uncertainty), hash-based assignment checked over 2,000 salts, Welch t-test, CUPED, SRM and covariate-balance checks, guardrail metric, ship rule, A/A tests, peeking and always-valid p-values (mSPRT); every method checked against the true effect over 2,000 re-randomised experiments | Done |
-| Demo | Streamlit app: user lookup, model leaderboard, interactive A/B lab | Planned |
+| Demo | [Streamlit app](#streamlit-demo): leaderboard, user explorer, interactive A/B lab running the pipeline's own statistics; reads precomputed artifacts only and is tested headlessly with Streamlit's `AppTest` | Done |
 
 ## Quickstart
 
@@ -46,6 +46,8 @@ make data    # download KuaiRec (432 MB), validate, label and split
 make eda     # re-run the EDA notebook and refresh reports/figures
 make experiments  # model searches, re-ranker, test evaluation, A/B (~30 min on an M4)
 make results      # refresh the results notebooks and figures
+make demo-data    # build the demo's tables
+make demo         # open the Streamlit demo at http://localhost:8501
 make test    # run the test suite
 ```
 
@@ -66,9 +68,12 @@ download ──> prepare ──┬──> split ────┬──> als_searc
                                                   final_evaluation <───┘  (test users, once)
                                                          │
                                                          └──> ab_test  (simulated A/B tests)
+                                                                 │
+                                                                 └──> demo_data  (demo tables)
 ```
 
-`two_tower_search`, `leaderboard` and `final_evaluation` read both the splits and the features.
+`two_tower_search`, `leaderboard` and `final_evaluation` read both the splits and the features;
+`demo_data` also reads the splits and the video categories.
 `retrieval` scores every pair the later stages need with the saved two-tower models, so
 `reranker` and `final_evaluation` (LightGBM) never load PyTorch: on macOS the two libraries'
 OpenMP runtimes crash when they share a process.
@@ -86,6 +91,7 @@ OpenMP runtimes crash when they share a process.
 | `reranker` | Trains the LightGBM re-ranker on the validation week (tuned on held-out validation users), evaluates the two-stage pipeline on the tune users, explains it with TreeSHAP | [`reports/metrics/reranker.json`](reports/metrics/reranker.json), `models/reranker/` |
 | `final_evaluation` | Scores every frozen model once on the 1,112 untouched test users, with paired comparisons; writes each policy's 10-video session for every test user | [`reports/metrics/test_evaluation.json`](reports/metrics/test_evaluation.json), `data/ab/sessions.parquet` |
 | `ab_test` | Looks up what each test user did with every policy's session, splits users into arms by hash, runs the power analysis, the planned experiments and the A/A, peeking and logging-bug checks | [`reports/metrics/ab_test.json`](reports/metrics/ab_test.json), `data/ab/user_outcomes.parquet` |
+| `demo_data` | Packs what the Streamlit demo shows: every policy's session per test user with the video's category, length and the user's reaction, and each user's history before the experiment | `data/demo/{sessions,users}.parquet` |
 
 No DVC remote is configured: the raw data is public, so `dvc repro` rebuilds everything from
 Zenodo, and `dvc.lock` records the hash of every output so any drift shows up in `dvc status`.
@@ -397,6 +403,45 @@ only so far. The decision uses the CUPED estimate, the guardrail and the sample-
 
 ![A logging bug fakes a lift; the SRM check catches only the large loss](reports/figures/23_srm_demo.png)
 
+## Streamlit demo
+
+A local app for exploring the results, run with `make demo` (after `make demo-data`) at
+http://localhost:8501:
+
+- **Leaderboard**: the final test scores with their intervals, and paired comparisons against
+  any reference model.
+- **User explorer**: pick a test user and see the 10 videos each model recommended, with what
+  the user actually did with each (liked, seconds watched), next to their history before the
+  experiment.
+- **A/B lab**: choose control, treatment, split and significance level, then
+  - **run** an experiment, with plain and CUPED estimates drawn against the true effect, and the
+    sample-ratio, balance and guardrail checks behind the decision;
+  - **plan** its size, seeing how the smallest detectable effect falls with more users;
+  - **repeat** it thousands of times for power (or false alarms), bias and coverage;
+  - **peek** at it as users arrive, naively or with always-valid p-values;
+  - **break the logging**, losing the least engaged treatment users, and watch the fake lift and
+    the sample-ratio check.
+
+How it is built:
+
+- **No models in the app.** It reads only precomputed artifacts: the git-tracked reports, the
+  per-user A/B outcomes and two small tables from the `demo_data` stage (about 400 KB). It never
+  loads PyTorch or LightGBM, and it starts in seconds.
+- **The pipeline's own statistics.** The lab calls the same functions as the `ab_test` stage
+  (`recsys.abtest`); a test checks that it reproduces the stage's readout exactly.
+- **Works on a fresh clone.** With only the git-tracked reports, the overview and leaderboard
+  work and the other pages say which `make` command builds their data.
+- **Tested end to end.** Every page runs headlessly in Streamlit's `AppTest`, on a synthetic
+  project built by the real `ab_test` and `demo_data` stages and on a reports-only clone.
+- **Caching** is keyed on each file's modification time, so a pipeline re-run shows up without
+  restarting the app. Streamlit's usage statistics are switched off in `.streamlit/config.toml`.
+
+![The A/B lab: one experiment against the true effect](reports/figures/demo_ab_lab_run.jpg)
+
+![The A/B lab: planning the experiment's size](reports/figures/demo_ab_lab_plan.jpg)
+
+![The user explorer](reports/figures/demo_user_explorer.jpg)
+
 ## Experiment tracking
 
 Every training run is logged to both trackers through one small interface
@@ -517,8 +562,10 @@ Findings from building the `prepare` stage (full numbers in `reports/data_summar
 │   ├── reranking/           # ranking features, LightGBM ranker, two-stage pipeline
 │   ├── abtest/              # Welch, CUPED, power, SRM, mSPRT; sessions; simulated experiments
 │   ├── experiments/         # searches, leaderboard, retrieval, re-ranker, test evaluation, A/B (DVC stages)
+│   ├── demo/                # demo tables (DVC stage), loaders, A/B lab, charts, Streamlit glue
 │   └── viz/
 │       └── style.py         # chart style with a colorblind-safe palette
+├── app/                     # Streamlit demo: entry point and pages (`make demo`)
 ├── notebooks/               # jupytext .py sources + executed .ipynb
 ├── sweeps/                  # W&B sweep configs
 ├── tests/                   # synthetic fixtures; no network or real data needed
@@ -535,7 +582,7 @@ Findings from building the `prepare` stage (full numbers in `reports/data_summar
 3. **Two-tower neural model, category-affinity baseline, feature pipeline** (done)
 4. **Two-stage pipeline: LightGBM re-ranker with feature engineering and SHAP** (done)
 5. **Final test evaluation and A/B testing framework on the fully observed matrix** (done)
-6. Streamlit demo app
+6. **Streamlit demo: leaderboard, user explorer and interactive A/B lab** (done)
 
 ## License
 

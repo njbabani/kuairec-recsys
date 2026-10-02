@@ -1,0 +1,11 @@
+# Streamlit settings for `make demo` (read from the repository root).
+
+[browser]
+gatherUsageStats = false  # no telemetry
+
+[theme]
+base = "light"
+primaryColor = "#2a78d6"  # recsys.viz.style.PRIMARY
+backgroundColor = "#fcfcfb"  # recsys.viz.style.SURFACE
+secondaryBackgroundColor = "#f1f0ec"
+textColor = "#0b0b0b"  # recsys.viz.style.INK

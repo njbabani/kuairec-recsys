@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: help setup data features eda results experiments mlflow-ui sweep-als pipeline test lint format check
+.PHONY: help setup data features eda results experiments demo-data demo mlflow-ui sweep-als pipeline test lint format check
 
 help: ## List available commands
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*## "}; {printf "  %-12s %s\n", $$1, $$2}'
@@ -24,6 +24,12 @@ results: ## Re-run the results notebooks (after `make experiments`)
 
 experiments: ## Model searches, re-ranker, final test evaluation and A/B tests (MLflow + W&B)
 	uv run dvc repro als_search two_tower_search leaderboard retrieval reranker final_evaluation ab_test
+
+demo-data: ## Build the Streamlit demo's tables (DVC; runs any missing pipeline stage first)
+	uv run dvc repro demo_data
+
+demo: ## Launch the Streamlit demo at http://localhost:8501
+	uv run streamlit run app/streamlit_app.py
 
 mlflow-ui: ## Browse tracked runs at http://127.0.0.1:5000
 	uv run mlflow ui --backend-store-uri sqlite:///mlflow.db

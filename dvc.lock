@@ -5,8 +5,8 @@ stages:
     deps:
     - path: src/recsys/config.py
       hash: md5
-      md5: 43dbed1673cd957c2cb8f654d8cb0422
-      size: 10389
+      md5: c70ca3a5070c4bfed7ee000a9e35852b
+      size: 10451
     - path: src/recsys/data/download.py
       hash: md5
       md5: f7df34ca3344dab4a7bce128d8c7d6ae
@@ -30,8 +30,8 @@ stages:
       size: 431964858
     - path: src/recsys/config.py
       hash: md5
-      md5: 43dbed1673cd957c2cb8f654d8cb0422
-      size: 10389
+      md5: c70ca3a5070c4bfed7ee000a9e35852b
+      size: 10451
     - path: src/recsys/data/prepare.py
       hash: md5
       md5: c2466fa9d8a800a1a581ab4870fc5482
@@ -64,8 +64,8 @@ stages:
       nfiles: 6
     - path: src/recsys/config.py
       hash: md5
-      md5: 43dbed1673cd957c2cb8f654d8cb0422
-      size: 10389
+      md5: c70ca3a5070c4bfed7ee000a9e35852b
+      size: 10451
     - path: src/recsys/data/labels.py
       hash: md5
       md5: 3e79cfb885442c3bee5ba625ce7ff5db
@@ -116,8 +116,8 @@ stages:
       nfiles: 4
     - path: src/recsys/config.py
       hash: md5
-      md5: 43dbed1673cd957c2cb8f654d8cb0422
-      size: 10389
+      md5: c70ca3a5070c4bfed7ee000a9e35852b
+      size: 10451
     - path: src/recsys/evaluation/concentration.py
       hash: md5
       md5: 6ca7305a97b85edda873752b45fd052d
@@ -194,8 +194,8 @@ stages:
       nfiles: 6
     - path: src/recsys/config.py
       hash: md5
-      md5: 43dbed1673cd957c2cb8f654d8cb0422
-      size: 10389
+      md5: c70ca3a5070c4bfed7ee000a9e35852b
+      size: 10451
     - path: src/recsys/data/features.py
       hash: md5
       md5: a4ae096309b85a2a53e5b97449d023d9
@@ -229,8 +229,8 @@ stages:
       size: 3276
     - path: src/recsys/config.py
       hash: md5
-      md5: 43dbed1673cd957c2cb8f654d8cb0422
-      size: 10389
+      md5: c70ca3a5070c4bfed7ee000a9e35852b
+      size: 10451
     - path: src/recsys/evaluation/concentration.py
       hash: md5
       md5: 6ca7305a97b85edda873752b45fd052d
@@ -336,8 +336,8 @@ stages:
       size: 3276
     - path: src/recsys/config.py
       hash: md5
-      md5: 43dbed1673cd957c2cb8f654d8cb0422
-      size: 10389
+      md5: c70ca3a5070c4bfed7ee000a9e35852b
+      size: 10451
     - path: src/recsys/evaluation/concentration.py
       hash: md5
       md5: 6ca7305a97b85edda873752b45fd052d
@@ -466,8 +466,8 @@ stages:
       size: 3276
     - path: src/recsys/config.py
       hash: md5
-      md5: 43dbed1673cd957c2cb8f654d8cb0422
-      size: 10389
+      md5: c70ca3a5070c4bfed7ee000a9e35852b
+      size: 10451
     - path: src/recsys/experiments/retrieval.py
       hash: md5
       md5: ad8aa4d81a66139f4bd168701c6591b2
@@ -535,8 +535,8 @@ stages:
       size: 3276
     - path: src/recsys/config.py
       hash: md5
-      md5: 43dbed1673cd957c2cb8f654d8cb0422
-      size: 10389
+      md5: c70ca3a5070c4bfed7ee000a9e35852b
+      size: 10451
     - path: src/recsys/data/labels.py
       hash: md5
       md5: 3e79cfb885442c3bee5ba625ce7ff5db
@@ -704,8 +704,8 @@ stages:
       size: 3276
     - path: src/recsys/config.py
       hash: md5
-      md5: 43dbed1673cd957c2cb8f654d8cb0422
-      size: 10389
+      md5: c70ca3a5070c4bfed7ee000a9e35852b
+      size: 10451
     - path: src/recsys/data/labels.py
       hash: md5
       md5: 3e79cfb885442c3bee5ba625ce7ff5db
@@ -860,12 +860,12 @@ stages:
       size: 7579
     - path: src/recsys/config.py
       hash: md5
-      md5: 43dbed1673cd957c2cb8f654d8cb0422
-      size: 10389
+      md5: c70ca3a5070c4bfed7ee000a9e35852b
+      size: 10451
     - path: src/recsys/experiments/ab_test.py
       hash: md5
-      md5: 7f181aa5b1c986b90bf1517f41bf6a6f
-      size: 13311
+      md5: c5fe56edfb264c2b52fe4c866b148322
+      size: 13341
     - path: src/recsys/hashing.py
       hash: md5
       md5: fa1a0281bc0b3ea76f0357126d5d3e00
@@ -915,3 +915,52 @@ stages:
       hash: md5
       md5: 93874c2f4afeec8244f614c77405b8e2
       size: 14845
+  demo_data:
+    cmd: python -m recsys.demo.bundle
+    deps:
+    - path: data/ab/sessions.parquet
+      hash: md5
+      md5: 5231c3e1570a8f6f50071575b70f6e2d
+      size: 72121
+    - path: data/ab/user_outcomes.parquet
+      hash: md5
+      md5: d77ebfadc4ef6e610da1b1ed96b240d8
+      size: 34415
+    - path: data/processed/video_captions.parquet
+      hash: md5
+      md5: 3e1f2f68223f997083f0b95eb5c0b149
+      size: 653306
+    - path: data/splits
+      hash: md5
+      md5: eb3ef3245a68e68dfed9072b97d773a8.dir
+      size: 272957510
+      nfiles: 4
+    - path: src/recsys/abtest/outcomes.py
+      hash: md5
+      md5: a88be999e158663312a0ab469255f687
+      size: 2207
+    - path: src/recsys/config.py
+      hash: md5
+      md5: c70ca3a5070c4bfed7ee000a9e35852b
+      size: 10451
+    - path: src/recsys/data/categories.py
+      hash: md5
+      md5: 3e71a10e61f28fe2ffdb551aa5fedb68
+      size: 1676
+    - path: src/recsys/demo/bundle.py
+      hash: md5
+      md5: ef31d171548431218d6b9b26d3f5457b
+      size: 5975
+    - path: src/recsys/io.py
+      hash: md5
+      md5: d0eee65421e99c5c2f18df66f5ff0c45
+      size: 1104
+    outs:
+    - path: data/demo/sessions.parquet
+      hash: md5
+      md5: 396b0c40fe08264368ce6bdca19230b7
+      size: 362057
+    - path: data/demo/users.parquet
+      hash: md5
+      md5: 08f34dc348186b6449a34d73cc98dfcb
+      size: 27704

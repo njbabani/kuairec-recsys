@@ -39,6 +39,7 @@ class DataParams(_FrozenModel):
     retrieval_path: Path  # two-tower scores of every pair the re-ranker needs
     reranker_dir: Path  # re-ranker outputs too large for git (SHAP sample)
     ab_dir: Path  # A/B simulation inputs and per-user outcomes
+    demo_dir: Path  # compact tables the Streamlit demo reads
 
 
 class LabelParams(_FrozenModel):

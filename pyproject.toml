@@ -10,6 +10,7 @@ authors = [{ name = "Nikhil J. Babani" }]
 # has the most reliable prebuilt Apple Silicon wheels there.
 requires-python = ">=3.12,<3.13"
 dependencies = [
+    "altair>=5.4",
     "httpx>=0.28",
     "implicit>=0.7.3",
     "lightgbm>=4.6",
@@ -21,6 +22,7 @@ dependencies = [
     "pydantic>=2.10",
     "pyyaml>=6.0",
     "scipy>=1.18.1",
+    "streamlit>=1.50",
     "torch>=2.14.1",
     "tqdm>=4.66",
     "wandb>=0.30.0",

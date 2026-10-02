@@ -268,3 +268,21 @@ stages:
     metrics:
       - ${data.metrics_dir}/ab_test.json:
           cache: false
+
+  demo_data:
+    # Compact tables for the Streamlit demo: each test user's sessions with their reactions,
+    # and user profiles. The app reads only these, the A/B outcomes and the reports.
+    cmd: python -m recsys.demo.bundle
+    deps:
+      - ${data.ab_dir}/sessions.parquet
+      - ${data.ab_dir}/user_outcomes.parquet
+      - ${data.splits_dir}
+      - ${data.processed_dir}/video_captions.parquet
+      - src/recsys/abtest/outcomes.py
+      - src/recsys/config.py
+      - src/recsys/data/categories.py
+      - src/recsys/demo/bundle.py
+      - src/recsys/io.py
+    outs:
+      - ${data.demo_dir}/sessions.parquet
+      - ${data.demo_dir}/users.parquet

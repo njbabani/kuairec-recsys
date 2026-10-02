@@ -17,6 +17,7 @@ data:
   retrieval_path: data/retrieval/two_tower_scores.parquet  # stage-1 scores for the re-ranker
   reranker_dir: data/reranker  # SHAP sample for the notebook
   ab_dir: data/ab  # A/B sessions and per-user outcomes
+  demo_dir: data/demo  # compact tables for the Streamlit demo
 
 label:
   # People watch ~7.5 s of a video whatever its length, so raw watch_ratio mostly measures

@@ -162,7 +162,9 @@ def power_analysis(
     }
 
 
-def users_needed(outcome: PotentialOutcomes, params: ABTestParams) -> dict[str, Any]:
+def users_needed(
+    outcome: PotentialOutcomes, treatment_share: float, alpha: float, power: float
+) -> dict[str, Any]:
     """Users (both arms together) for the planned power: at the true effect on these users, and
     across the 95% interval of effects a new set of users could plausibly show."""
     spreads = (float(outcome.control.std(ddof=1)), float(outcome.treatment.std(ddof=1)))
@@ -170,11 +172,9 @@ def users_needed(outcome: PotentialOutcomes, params: ABTestParams) -> dict[str, 
     def needed(effect: float) -> int | None:
         if effect == 0:
             return None
-        return required_sample_size(
-            *spreads, abs(effect), params.treatment_share, params.alpha, params.power
-        )
+        return required_sample_size(*spreads, abs(effect), treatment_share, alpha, power)
 
-    low, high = mean_interval(outcome.treatment - outcome.control, params.alpha)
+    low, high = mean_interval(outcome.treatment - outcome.control, alpha)
     smaller, larger = sorted((abs(low), abs(high)))
     # The largest plausible effect needs the fewest users. If the interval reaches zero, no
     # number of users is guaranteed to be enough.
@@ -200,7 +200,7 @@ def analyse_experiment(
         "operating_characteristics": operating_characteristics(
             outcome, params.simulations, params.treatment_share, params.alpha, seed
         ),
-        "users_needed": users_needed(outcome, params),
+        "users_needed": users_needed(outcome, params.treatment_share, params.alpha, params.power),
     }
 
 
