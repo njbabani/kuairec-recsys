@@ -16,6 +16,8 @@ jobs:
   lint-and-test:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    outputs:
+      coverage: ${{ steps.coverage.outputs.total }}
     steps:
       - uses: actions/checkout@v7
 
@@ -38,3 +40,40 @@ jobs:
       # Tests use synthetic KuaiRec-shaped fixtures, so CI never downloads the dataset.
       - name: Test with coverage
         run: uv run pytest --cov --cov-report=term-missing
+
+      - name: Record total coverage
+        id: coverage
+        run: |
+          total=$(uv run coverage report --format=total)
+          echo "total=${total}" >> "$GITHUB_OUTPUT"
+          echo "### Test coverage: ${total}%" >> "$GITHUB_STEP_SUMMARY"
+
+  # Publishes the coverage figure as a shields.io endpoint on the `badges` branch, which the
+  # README's coverage badge reads. Only this job can write, and only for pushes to main.
+  coverage-badge:
+    needs: lint-and-test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - name: Publish the coverage badge
+        env:
+          COVERAGE: ${{ needs.lint-and-test.outputs.coverage }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          [[ "$COVERAGE" =~ ^[0-9]+$ ]] || { echo "Unexpected coverage value: $COVERAGE"; exit 1; }
+          if (( COVERAGE >= 90 )); then color=brightgreen
+          elif (( COVERAGE >= 80 )); then color=green
+          else color=orange; fi
+          mkdir badges && cd badges
+          printf '{"schemaVersion": 1, "label": "coverage", "message": "%s%%", "color": "%s"}\n' \
+            "$COVERAGE" "$color" > coverage.json
+          git init -q -b badges
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add coverage.json
+          git commit -q -m "Update coverage badge to ${COVERAGE}%"
+          git push -q --force \
+            "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" badges

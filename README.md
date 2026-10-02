@@ -1,5 +1,20 @@
 # KuaiRec Recommender
 
+[![CI](https://github.com/njbabani/kuairec-recsys/actions/workflows/ci.yml/badge.svg)](https://github.com/njbabani/kuairec-recsys/actions/workflows/ci.yml)
+[![Coverage](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/njbabani/kuairec-recsys/badges/coverage.json)](https://github.com/njbabani/kuairec-recsys/actions/workflows/ci.yml)
+[![Python 3.12](https://img.shields.io/badge/python-3.12-3776AB?logo=python&logoColor=white)](pyproject.toml)
+[![uv](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/uv/main/assets/badge/v0.json)](https://github.com/astral-sh/uv)
+[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
+[![License: MIT](https://img.shields.io/badge/license-MIT-yellow)](LICENSE)
+
+[![PyTorch](https://img.shields.io/badge/PyTorch-two--tower-EE4C2C?logo=pytorch&logoColor=white)](#two-tower-results-tune-users)
+[![LightGBM](https://img.shields.io/badge/LightGBM-LambdaRank-9ACD32)](#two-stage-results-retrieval--re-ranking-tune-users)
+[![DVC](https://img.shields.io/badge/pipeline-DVC-13ADC7?logo=dvc&logoColor=white)](#pipeline)
+[![MLflow](https://img.shields.io/badge/tracking-MLflow-0194E2?logo=mlflow&logoColor=white)](#experiment-tracking)
+[![Weights & Biases](https://img.shields.io/badge/tracking-W%26B-FFBE00?logo=weightsandbiases&logoColor=black)](#experiment-tracking)
+[![Streamlit](https://img.shields.io/badge/demo-Streamlit-FF4B4B?logo=streamlit&logoColor=white)](#streamlit-demo)
+[![Data: KuaiRec](https://img.shields.io/badge/data-KuaiRec_(CC_BY_4.0)-lightgrey)](#dataset--citation)
+
 An end-to-end short-video recommender built on [KuaiRec](https://kuairec.com/), with a
 **simulated A/B testing framework** that uses real user reactions instead of made-up ones.
 
@@ -7,6 +22,33 @@ KuaiRec comes from Kuaishou, a TikTok-style app. Besides a normal logged feed, i
 *fully observed* matrix: 1,411 users × 3,327 videos with 99.6% of cells filled. For those users
 and videos we know how each user reacted to (almost) every video, so an offline A/B test can
 show each arm different videos from that set and look up the real reaction.
+
+## At a glance
+
+- **A two-stage recommender.** A PyTorch two-tower model retrieves each user's top 200
+  videos and a LightGBM LambdaRank model re-orders them. On 1,112 untouched test users it
+  reaches **NDCG@10 0.306**, ahead of the two-tower model alone (**+0.017** [+0.006, +0.027],
+  paired on the same users) and of ALS (+0.035).
+- **A/B tests with a known right answer.** These users reacted to almost every video, so every
+  simulated experiment has a known true effect. Power analysis, CUPED, sample-ratio checks and
+  sequential testing are all checked against it: an A/A test raises false alarms 4.7% of the
+  time at alpha = 5%, peeking pushes that to 20%, and always-valid p-values hold it at 1%.
+- **An honest finding.** The offline paired comparison detects the re-ranker's small gain; a
+  between-user A/B test on the same users cannot. It would need about 9,300 users (4,200 for
+  two-tower vs ALS), and the analysis says "inconclusive" instead of guessing.
+- **Built like production code.** A DVC pipeline with pinned outputs, data contracts,
+  resumable checkpoints, MLflow and W&B tracking, CI with an enforced coverage gate, and a
+  [Streamlit demo](#streamlit-demo) that never loads a model.
+
+![The demo's A/B lab: an experiment's estimates against the true effect](reports/figures/demo_ab_lab_run.jpg)
+
+**Contents:** [Quickstart](#quickstart) · [Pipeline](#pipeline) ·
+[EDA](#key-findings-from-the-eda) · [Baselines](#baseline-results-tune-users) ·
+[Two-tower](#two-tower-results-tune-users) ·
+[Two-stage](#two-stage-results-retrieval--re-ranking-tune-users) ·
+[Final results](#final-results-test-users) ·
+[A/B testing](#ab-testing-on-real-reactions-test-users) · [Demo](#streamlit-demo) ·
+[Limitations](#evaluation-design-and-limitations)
 
 > Status: **all six phases complete**: data pipeline, EDA, debiased labels, evaluation
 > harness, tracked baselines, two-tower neural model, two-stage re-ranking with SHAP, final
@@ -40,7 +82,7 @@ and ~5 GB RAM for the `prepare` stage (it peaks at ~4 GB). On macOS, LightGBM ne
 runtime: `brew install libomp`.
 
 ```bash
-git clone <this-repo> && cd recommender
+git clone https://github.com/njbabani/kuairec-recsys.git && cd kuairec-recsys
 make setup   # create the environment from uv.lock
 make data    # download KuaiRec (432 MB), validate, label and split
 make eda     # re-run the EDA notebook and refresh reports/figures
