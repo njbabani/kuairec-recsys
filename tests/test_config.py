@@ -22,6 +22,8 @@ data:
   features_dir: data/features
   checkpoints_dir: checkpoints
   models_dir: models
+  retrieval_path: data/retrieval/two_tower_scores.parquet
+  reranker_dir: data/reranker
 label:
   bucket_width_ratio: 1.15
   min_views_per_bucket: 10000
@@ -75,6 +77,22 @@ two_tower_search:
   temperature: [0.05, 0.1]
   seeds: [1, 2]
   device: auto
+reranker:
+  retrieve_top_n: 200
+  holdout_user_share: 0.1
+  report_user_share: 0.1
+  holdout_salt: ranker-holdout
+  cross_fit_folds: 5
+  num_leaves: [31, 127]
+  min_child_samples: [100, 1000]
+  learning_rate: 0.05
+  feature_fraction: 0.8
+  max_rounds: 2000
+  early_stopping_rounds: 100
+  eval_at: 10
+  prior_strength: 20
+  shap_sample_rows: 5000
+  seed: 42
 tracking:
   backends: [mlflow, wandb]
   experiment: kuairec-recsys
@@ -142,6 +160,8 @@ def test_load_params_parses_modelling_and_tracking_sections(tmp_path):
     assert params.models.two_tower.seeds == (42, 43, 44)
     assert params.models.two_tower.member(43).seed == 43
     assert params.data.checkpoints_dir == Path("checkpoints")
+    assert params.reranker.num_leaves == (31, 127)
+    assert params.reranker.retrieve_top_n == 200
     assert params.data.features_dir == Path("data/features")
     assert params.tracking.backends == ("mlflow", "wandb")
     assert params.tracking.wandb_mode == "offline"
@@ -167,6 +187,11 @@ def test_load_params_parses_modelling_and_tracking_sections(tmp_path):
         ("    loss: bce\n", "    loss: softmax\n"),
         ("seeds: [42, 43, 44]", "seeds: [42, 42]"),
         ("seeds: [42, 43, 44]", "seeds: []"),
+        ("num_leaves: [31, 127]", "num_leaves: [31, 31]"),
+        ("holdout_user_share: 0.1", "holdout_user_share: 1.0"),
+        ("feature_fraction: 0.8", "feature_fraction: 0"),
+        ("report_user_share: 0.1", "report_user_share: 0.9"),
+        ("cross_fit_folds: 5", "cross_fit_folds: 1"),
     ],
     ids=[
         "metric-k-not-evaluated",
@@ -186,6 +211,11 @@ def test_load_params_parses_modelling_and_tracking_sections(tmp_path):
         "softmax-without-temperature",
         "duplicate-seed",
         "no-seeds",
+        "duplicate-leaves",
+        "holdout-everything",
+        "no-features",
+        "no-users-left-to-fit",
+        "one-fold",
     ],
 )
 def test_load_params_rejects_invalid_modelling_settings(tmp_path, old, new):

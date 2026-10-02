@@ -36,6 +36,8 @@ class DataParams(_FrozenModel):
     features_dir: Path
     checkpoints_dir: Path  # resumable training state (not versioned; deleted once a stage succeeds)
     models_dir: Path  # trained models written by the leaderboard (versioned by DVC)
+    retrieval_path: Path  # two-tower scores of every pair the re-ranker needs
+    reranker_dir: Path  # re-ranker outputs too large for git (SHAP sample)
 
 
 class LabelParams(_FrozenModel):
@@ -175,6 +177,34 @@ class TwoTowerSearchParams(_TwoTowerTraining):
         return self
 
 
+class RerankerParams(_FrozenModel):
+    """The LightGBM re-ranker: trained on the validation week, tuned on held-out users of it."""
+
+    retrieve_top_n: PositiveInt  # candidates per user the two-tower model passes on
+    holdout_user_share: float = Field(gt=0, lt=1)  # validation users for early stopping/grid
+    report_user_share: float = Field(gt=0, lt=1)  # validation users only for the logged check
+    holdout_salt: str = Field(min_length=1)
+    cross_fit_folds: int = Field(ge=2)  # folds of the fully observed upper-bound check
+    num_leaves: tuple[PositiveInt, ...] = Field(min_length=1)
+    min_child_samples: tuple[PositiveInt, ...] = Field(min_length=1)
+    learning_rate: PositiveFloat
+    feature_fraction: float = Field(gt=0, le=1)
+    max_rounds: PositiveInt
+    early_stopping_rounds: PositiveInt
+    eval_at: PositiveInt
+    prior_strength: PositiveFloat  # shrinkage of per-user length rates (a feature)
+    shap_sample_rows: PositiveInt
+    seed: int
+
+    @model_validator(mode="after")
+    def _grid_values_are_distinct(self) -> Self:
+        for name in ("num_leaves", "min_child_samples"):
+            _require_distinct(getattr(self, name), name)
+        if self.holdout_user_share + self.report_user_share >= 1:
+            raise ValueError("holdout and report user shares must leave users to fit on")
+        return self
+
+
 class TrackingParams(_FrozenModel):
     backends: tuple[Literal["mlflow", "wandb"], ...]
     experiment: str = Field(min_length=1)
@@ -197,6 +227,7 @@ class Params(_FrozenModel):
     models: ModelParams
     als_search: ALSSearchParams
     two_tower_search: TwoTowerSearchParams
+    reranker: RerankerParams
     tracking: TrackingParams
 
 

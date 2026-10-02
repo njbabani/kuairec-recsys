@@ -13,7 +13,7 @@ from typing import Self
 
 import polars as pl
 
-from recsys.models.two_tower.checkpoint import remove_if_empty
+from recsys.checkpointing import remove_if_empty
 from recsys.models.two_tower.recommender import TwoTowerRecommender
 
 MEMBER_PREFIX = "seed_"

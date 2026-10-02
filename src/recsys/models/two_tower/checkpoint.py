@@ -8,7 +8,6 @@
   checkpoint, so training never resumes from a checkpoint made for different inputs.
 """
 
-import hashlib
 import io
 from pathlib import Path
 from typing import Any
@@ -17,6 +16,7 @@ import numpy as np
 import polars as pl
 import torch
 
+from recsys.checkpointing import atomic_write
 from recsys.models.two_tower.encoding import EntityFeatures, Vocabulary
 
 FORMAT_VERSION = 1
@@ -25,27 +25,11 @@ MODEL = "two_tower_model"
 
 
 def save_atomic(payload: dict[str, Any], path: Path) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    partial = path.with_name(f"{path.name}.partial")
-    torch.save(payload, partial)
-    partial.replace(path)
-
-
-def remove_if_empty(directory: Path | None) -> None:
-    """Drop a checkpoint folder once nothing is left in it (never touches other files)."""
-    if directory is not None and directory.is_dir() and not any(directory.iterdir()):
-        directory.rmdir()
+    atomic_write(path, lambda partial: torch.save(payload, partial))
 
 
 def load_payload(path: Path) -> dict[str, Any]:
     return torch.load(path, map_location="cpu", weights_only=True)
-
-
-def frame_fingerprint(frame: pl.DataFrame) -> str:
-    """Content hash of a frame (stable within one Polars version, which is all resuming needs)."""
-    digest = hashlib.sha256(str(frame.schema).encode())
-    digest.update(frame.hash_rows(seed=0).to_numpy().tobytes())
-    return digest.hexdigest()
 
 
 def frame_to_tensor(frame: pl.DataFrame) -> torch.Tensor:

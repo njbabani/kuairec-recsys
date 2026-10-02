@@ -113,7 +113,7 @@ def test_an_interrupted_search_resumes_without_rescoring_finished_epochs(
 def test_progress_from_other_settings_is_discarded(search, tmp_path):
     stale = tmp_path / "checkpoints" / "progress.json"
     stale.parent.mkdir()
-    stale.write_text(json.dumps({"fingerprint": "made-with-other-settings", "scored": {}}))
+    stale.write_text(json.dumps({"fingerprint": "made-with-other-settings", "entries": {}}))
 
     report, tracker = search()
 

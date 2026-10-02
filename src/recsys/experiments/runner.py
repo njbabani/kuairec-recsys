@@ -3,12 +3,19 @@
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import polars as pl
 
 from recsys.config import EvaluationParams
-from recsys.evaluation.ranking import EvaluationResult, evaluate, popularity_percentiles
-from recsys.models.base import Recommender
+from recsys.evaluation.ranking import (
+    EvaluationResult,
+    evaluate,
+    paired_bootstrap_difference,
+    paired_win_rate,
+    popularity_percentiles,
+)
+from recsys.models.base import Recommender, Scorer
 
 # Model selection and every reported metric so far use the tune users; test stays untouched.
 EVAL_SPLIT = "tune"
@@ -61,7 +68,7 @@ def fit_and_evaluate(
 
 
 def evaluate_model(
-    model: Recommender,
+    model: Scorer,
     eval_split: pl.DataFrame,
     popularity: pl.DataFrame,
     evaluation: EvaluationParams,
@@ -75,3 +82,32 @@ def evaluate_model(
         n_bootstrap=evaluation.bootstrap_samples,
         seed=evaluation.seed,
     )
+
+
+def compare_with_reference(
+    results: dict[str, EvaluationResult], reference: str, evaluation: EvaluationParams
+) -> dict[str, Any]:
+    """Per-user paired difference (and win rate) of every other model against ``reference``.
+
+    The interval reflects user sampling only: it is conditional on the candidate videos, the
+    label cut-offs and each model's fixed seed(s).
+    """
+    baseline = results[reference].per_user
+    differences = {}
+    for name, result in results.items():
+        if name == reference:
+            continue
+        mean, low, high = paired_bootstrap_difference(
+            result.per_user,
+            baseline,
+            evaluation.select_metric,
+            n_samples=evaluation.bootstrap_samples,
+            seed=evaluation.seed,
+        )
+        differences[name] = {
+            "mean": mean,
+            "ci_low": low,
+            "ci_high": high,
+            "win_rate": paired_win_rate(result.per_user, baseline, evaluation.select_metric),
+        }
+    return {"metric": evaluation.select_metric, "differences": differences}

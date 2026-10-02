@@ -5,10 +5,10 @@ import polars as pl
 import pytest
 import torch
 
+from recsys.checkpointing import frame_fingerprint
 from recsys.models.two_tower.checkpoint import (
     entity_from_payload,
     entity_to_payload,
-    frame_fingerprint,
     frame_from_tensor,
     frame_to_tensor,
     load_payload,

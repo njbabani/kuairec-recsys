@@ -14,6 +14,8 @@ data:
   features_dir: data/features
   checkpoints_dir: checkpoints  # resumable training state; removed once a stage succeeds
   models_dir: models  # trained models from the leaderboard (DVC output)
+  retrieval_path: data/retrieval/two_tower_scores.parquet  # stage-1 scores for the re-ranker
+  reranker_dir: data/reranker  # SHAP sample for the notebook
 
 label:
   # People watch ~7.5 s of a video whatever its length, so raw watch_ratio mostly measures
@@ -89,6 +91,27 @@ two_tower_search:
   learning_rate: 0.001
   weight_decay: 0.0
   device: cpu
+
+reranker:
+  # Stage 2: LightGBM LambdaRank re-orders the two-tower model's top candidates. It learns from
+  # the validation week (logged views from Aug 30, features from before it) of users outside
+  # the fully observed matrix, and is tuned on a held-out slice of them: the tune and test users
+  # play no part in training or tuning it.
+  retrieve_top_n: 200
+  holdout_user_share: 0.1  # validation users that stop boosting and pick the configuration
+  report_user_share: 0.1  # validation users used only to report the logged-data comparison
+  holdout_salt: kuairec-ranker-holdout-v1
+  cross_fit_folds: 5  # upper-bound check: rankers cross-fitted on fully observed tune users
+  num_leaves: [31, 127]
+  min_child_samples: [100, 1000]
+  learning_rate: 0.05
+  feature_fraction: 0.8
+  max_rounds: 2000
+  early_stopping_rounds: 100
+  eval_at: 10
+  prior_strength: 20
+  shap_sample_rows: 5000
+  seed: 42
 
 tracking:
   backends: [mlflow, wandb]

@@ -16,15 +16,13 @@ from typing import Any
 
 import polars as pl
 
+from recsys.checkpointing import remove_if_empty
 from recsys.config import EvaluationParams, ModelParams, load_params
-from recsys.evaluation.ranking import (
-    EvaluationResult,
-    paired_bootstrap_difference,
-    paired_win_rate,
-)
+from recsys.evaluation.ranking import EvaluationResult
 from recsys.experiments.runner import (
     EVAL_SPLIT,
     ExperimentData,
+    compare_with_reference,
     evaluate_model,
     fit_and_evaluate,
     load_experiment_data,
@@ -35,7 +33,6 @@ from recsys.models.als import ALSRecommender
 from recsys.models.base import Recommender
 from recsys.models.category_affinity import CategoryAffinityRecommender
 from recsys.models.popularity import PopularityRecommender, RandomRecommender
-from recsys.models.two_tower.checkpoint import remove_if_empty
 from recsys.models.two_tower.ensemble import TwoTowerEnsemble
 from recsys.models.two_tower.recommender import TwoTowerRecommender
 from recsys.tracking import Tracker, build_tracker
@@ -158,35 +155,6 @@ def run_leaderboard(
     }
     write_json(report, metrics_path)
     return report
-
-
-def compare_with_reference(
-    results: dict[str, EvaluationResult], reference: str, evaluation: EvaluationParams
-) -> dict[str, Any]:
-    """Per-user paired difference (and win rate) of every other model against ``reference``.
-
-    The interval reflects user sampling only: it is conditional on the candidate videos, the
-    label cut-offs and each model's fixed seed(s).
-    """
-    baseline = results[reference].per_user
-    differences = {}
-    for name, result in results.items():
-        if name == reference:
-            continue
-        mean, low, high = paired_bootstrap_difference(
-            result.per_user,
-            baseline,
-            evaluation.select_metric,
-            n_samples=evaluation.bootstrap_samples,
-            seed=evaluation.seed,
-        )
-        differences[name] = {
-            "mean": mean,
-            "ci_low": low,
-            "ci_high": high,
-            "win_rate": paired_win_rate(result.per_user, baseline, evaluation.select_metric),
-        }
-    return {"metric": evaluation.select_metric, "differences": differences}
 
 
 def main() -> None:

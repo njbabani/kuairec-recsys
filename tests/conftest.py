@@ -8,12 +8,19 @@ import matplotlib
 import polars as pl
 import pytest
 
+# PyTorch and LightGBM each ship an OpenMP runtime; on macOS they only coexist in one process if
+# PyTorch's is loaded first (LightGBM then runs single-threaded, see
+# recsys.reranking.ranker.openmp_threads). The pipeline keeps them in separate processes; the
+# test suite cannot, so it loads PyTorch before any test module can import LightGBM.
+import torch  # noqa: F401  (imported for its side effect: load order)
+
 from recsys.data.schemas import EVENT_TIME_DTYPE
 
 # Headless rendering for every test that draws a figure (must run before pyplot is imported).
 matplotlib.use("Agg")
 
 SHANGHAI = ZoneInfo("Asia/Shanghai")
+
 
 INTERACTION_DEFAULTS = {
     "user_id": 0,

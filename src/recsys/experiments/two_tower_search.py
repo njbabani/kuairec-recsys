@@ -14,18 +14,16 @@ Run as a DVC stage: ``python -m recsys.experiments.two_tower_search``.
   params.yaml is a deliberate, reviewable step.
 """
 
-import hashlib
 import itertools
-import json
 import logging
 import statistics
-from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Self
+from typing import Any
 
 import numpy as np
 import polars as pl
 
+from recsys.checkpointing import ProgressLog, fingerprint, remove_if_empty
 from recsys.config import (
     EvaluationParams,
     TwoTowerEnsembleParams,
@@ -42,7 +40,6 @@ from recsys.experiments.runner import (
     load_features,
 )
 from recsys.io import write_json
-from recsys.models.two_tower.checkpoint import frame_fingerprint, remove_if_empty
 from recsys.models.two_tower.recommender import TwoTowerRecommender
 from recsys.tracking import Tracker, build_tracker
 
@@ -69,52 +66,34 @@ def _checkpoint_name(config: int, seed: int) -> str:
     return f"config_{config:02d}_seed_{seed}.pt"
 
 
-@dataclass
-class SearchProgress:
+class SearchProgress(ProgressLog):
     """Every (configuration, seed, epoch) scored so far; saved to disk after each one."""
 
-    path: Path
-    fingerprint: str
-    scored: dict[str, dict[str, Any]] = field(default_factory=dict)
-
-    @classmethod
-    def open(cls, path: Path, fingerprint: str) -> Self:
-        """Resume saved progress if it was made with the same settings and data."""
-        if path.is_file():
-            saved = json.loads(path.read_text(encoding="utf-8"))
-            if saved.get("fingerprint") == fingerprint:
-                logger.info("Resuming the search: %d epochs already scored", len(saved["scored"]))
-                return cls(path, fingerprint, saved["scored"])
-            logger.warning("Discarding search progress made with other settings or data")
-        return cls(path, fingerprint)
-
-    def record(
+    def record_epoch(
         self,
         key: tuple[int, int, int],
         train_loss: float,
         result: EvaluationResult,
         select_metric: str,
     ) -> None:
-        self.scored[_scored_key(*key)] = {
-            "train_loss": train_loss,
-            "metrics": result.summary,
-            "per_user": result.per_user[select_metric].to_list(),
-        }
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        partial = self.path.with_name(f"{self.path.name}.partial")
-        payload = {"fingerprint": self.fingerprint, "scored": self.scored}
-        partial.write_text(json.dumps(payload, allow_nan=False), encoding="utf-8")
-        partial.replace(self.path)  # atomic: a crash never leaves half-written progress
+        self.record(
+            _scored_key(*key),
+            {
+                "train_loss": train_loss,
+                "metrics": result.summary,
+                "per_user": result.per_user[select_metric].to_list(),
+            },
+        )
 
     def epochs_scored(self, config: int, seed: int, epochs: int) -> int:
         """How many leading epochs of this (configuration, seed) are already scored."""
         done = 0
-        while done < epochs and _scored_key(config, seed, done + 1) in self.scored:
+        while done < epochs and _scored_key(config, seed, done + 1) in self.entries:
             done += 1
         return done
 
     def get(self, config: int, seed: int, epoch: int) -> dict[str, Any]:
-        return self.scored[_scored_key(config, seed, epoch)]
+        return self.entries[_scored_key(config, seed, epoch)]
 
 
 def _search_fingerprint(
@@ -124,10 +103,7 @@ def _search_fingerprint(
     features: tuple[pl.DataFrame, pl.DataFrame],
 ) -> str:
     settings = [search.model_dump(mode="json"), evaluation.model_dump(mode="json")]
-    digest = hashlib.sha256(json.dumps(settings, sort_keys=True).encode())
-    for frame in (data.train, data.eval_split, *features):
-        digest.update(frame_fingerprint(frame).encode())
-    return digest.hexdigest()
+    return fingerprint(settings, [data.train, data.eval_split, *features])
 
 
 def _train_and_score(
@@ -156,7 +132,9 @@ def _train_and_score(
         def score_epoch(epoch: int, train_loss: float) -> None:
             result = evaluate_model(model, data.eval_split, data.popularity, evaluation)
             run.log_metrics({"train_loss": train_loss, **result.summary}, step=epoch)
-            progress.record((number, seed, epoch), train_loss, result, evaluation.select_metric)
+            progress.record_epoch(
+                (number, seed, epoch), train_loss, result, evaluation.select_metric
+            )
             logger.info(
                 "config %02d (%s, dim %d, t %s) seed %d epoch %d %s=%.4f",
                 number,

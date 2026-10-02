@@ -85,6 +85,7 @@ stages:
     deps:
       - ${data.splits_dir}
       - ${data.features_dir}
+      - src/recsys/checkpointing.py
       - src/recsys/config.py
       - src/recsys/io.py
       - src/recsys/tracking.py
@@ -111,6 +112,7 @@ stages:
     deps:
       - ${data.splits_dir}
       - ${data.features_dir}
+      - src/recsys/checkpointing.py
       - src/recsys/config.py
       - src/recsys/io.py
       - src/recsys/tracking.py
@@ -136,4 +138,67 @@ stages:
       - ${data.models_dir}/two_tower
     metrics:
       - ${data.metrics_dir}/leaderboard.json:
+          cache: false
+
+  retrieval:
+    # The only later stage that loads PyTorch: scores every pair the re-ranker needs.
+    cmd: python -m recsys.experiments.retrieval
+    deps:
+      - ${data.splits_dir}
+      - ${data.models_dir}/two_tower
+      - src/recsys/checkpointing.py
+      - src/recsys/config.py
+      - src/recsys/io.py
+      - src/recsys/experiments/retrieval.py
+      - src/recsys/models/two_tower/checkpoint.py
+      - src/recsys/models/two_tower/encoding.py
+      - src/recsys/models/two_tower/ensemble.py
+      - src/recsys/models/two_tower/network.py
+      - src/recsys/models/two_tower/recommender.py
+      - src/recsys/models/two_tower/training.py
+    params:
+      - models.two_tower.device
+    outs:
+      - ${data.retrieval_path}
+
+  reranker:
+    cmd: python -m recsys.experiments.reranker
+    deps:
+      - ${data.splits_dir}
+      - ${data.features_dir}
+      - ${data.processed_dir}/video_daily_stats.parquet
+      - ${data.retrieval_path}
+      - src/recsys/checkpointing.py
+      - src/recsys/config.py
+      - src/recsys/io.py
+      - src/recsys/hashing.py
+      - src/recsys/tracking.py
+      - src/recsys/data/labels.py
+      - src/recsys/data/schemas.py
+      - src/recsys/data/split.py
+      - src/recsys/evaluation/concentration.py
+      - src/recsys/evaluation/ranking.py
+      - src/recsys/experiments/reranker.py
+      - src/recsys/experiments/reranker_analysis.py
+      - src/recsys/experiments/runner.py
+      - src/recsys/models/als.py
+      - src/recsys/models/base.py
+      - src/recsys/models/category_affinity.py
+      - src/recsys/models/popularity.py
+      - src/recsys/reranking/candidates.py
+      - src/recsys/reranking/features.py
+      - src/recsys/reranking/ranker.py
+      - src/recsys/reranking/two_stage.py
+    params:
+      - reranker
+      - evaluation
+      - split.valid_start
+      - models.als
+      - models.popularity_engagement
+      - models.category_affinity
+    outs:
+      - ${data.models_dir}/reranker
+      - ${data.reranker_dir}
+    metrics:
+      - ${data.metrics_dir}/reranker.json:
           cache: false

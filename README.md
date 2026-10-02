@@ -8,8 +8,9 @@ KuaiRec comes from Kuaishou, a TikTok-style app. Besides a normal logged feed, i
 and videos we know how each user reacted to (almost) every video, so an offline A/B test can
 show each arm different videos from that set and look up the real reaction.
 
-> Status: **Phase 3 complete** (data pipeline, EDA, debiased labels, evaluation harness,
-> tracked baselines, two-tower neural model). See the [roadmap](#roadmap).
+> Status: **Phase 4 complete** (data pipeline, EDA, debiased labels, evaluation harness,
+> tracked baselines, two-tower neural model, two-stage re-ranking with SHAP). See the
+> [roadmap](#roadmap).
 
 ## What this project demonstrates
 
@@ -25,7 +26,7 @@ show each arm different videos from that set and look up the real reaction.
 | Feature pipeline | Label-free user and video feature tables (profile, categories, length) as their own DVC stage | Done |
 | Deep learning | Two-tower model in PyTorch (CPU or Apple MPS): pointwise vs. in-batch softmax with logQ correction, feature towers that can score unseen videos, multi-seed selection and seed ensembles | Done |
 | Training infrastructure | Atomic, resumable checkpoints (training state every epoch, search progress per scored epoch, `weights_only` loading); trained models versioned as DVC outputs | Done |
-| Learning to rank | LightGBM LambdaRank re-ranker + SHAP explanations | Planned |
+| Learning to rank | Two-stage pipeline: two-tower retrieval, then a LightGBM LambdaRank re-ranker over ~20 features, explained with TreeSHAP | Done |
 | Offline evaluation | Per-user NDCG / precision / recall / MAP@K with bootstrap CIs, paired model comparisons, coverage, Gini, popularity bias | Done |
 | Experiment tracking | Every run logged to MLflow (local) and Weights & Biases (offline by default), W&B Sweeps config for Bayesian HPO | Done |
 | A/B testing | Power analysis, A/A tests, SRM check, CUPED, sequential testing | Planned |
@@ -34,7 +35,8 @@ show each arm different videos from that set and look up the real reaction.
 ## Quickstart
 
 Requires [uv](https://docs.astral.sh/uv/) (it installs Python 3.12 for you), ~1.5 GB free disk
-and ~5 GB RAM for the `prepare` stage (it peaks at ~4 GB).
+and ~5 GB RAM for the `prepare` stage (it peaks at ~4 GB). On macOS, LightGBM needs the OpenMP
+runtime: `brew install libomp`.
 
 ```bash
 git clone <this-repo> && cd recommender
@@ -57,9 +59,13 @@ code, parameters or inputs changed, and `dvc.lock` pins the exact hash of every 
 download ──> prepare ──┬──> split ────┬──> als_search        (ALS grid on the tune users)
                        │              ├──> two_tower_search  (two-tower grid, scored every epoch)
                        └──> features ─┴──> leaderboard       (every model + paired comparisons)
+                                                 │
+                                                 └──> retrieval ──> reranker  (stage 2 + SHAP)
 ```
 
-`two_tower_search` and `leaderboard` read both the splits and the features.
+`two_tower_search` and `leaderboard` read both the splits and the features. `retrieval` scores
+every pair the re-ranker needs with the saved two-tower models, so `reranker` (LightGBM) never
+loads PyTorch: on macOS the two libraries' OpenMP runtimes crash when they share a process.
 
 | Stage | Does | Output |
 |---|---|---|
@@ -70,6 +76,8 @@ download ──> prepare ──┬──> split ────┬──> als_searc
 | `als_search` | Fits an ALS grid on train, scores it on the tune users, logs every trial | [`reports/metrics/als_search.json`](reports/metrics/als_search.json) |
 | `two_tower_search` | Trains each two-tower configuration once, scores it on tune after every epoch, logs a training curve per configuration | [`reports/metrics/two_tower_search.json`](reports/metrics/two_tower_search.json) |
 | `leaderboard` | Fits every model with its chosen settings, evaluates on the tune users, paired comparisons with engagement popularity and ALS; saves the trained two-tower members | [`reports/metrics/leaderboard.json`](reports/metrics/leaderboard.json), `models/two_tower/` |
+| `retrieval` | Scores every (user, video) pair of the validation week and the tune/test matrices with the saved two-tower ensemble | `data/retrieval/two_tower_scores.parquet` |
+| `reranker` | Trains the LightGBM re-ranker on the validation week (tuned on held-out validation users), evaluates the two-stage pipeline on the tune users, explains it with TreeSHAP | [`reports/metrics/reranker.json`](reports/metrics/reranker.json), `models/reranker/` |
 
 No DVC remote is configured: the raw data is public, so `dvc repro` rebuilds everything from
 Zenodo, and `dvc.lock` records the hash of every output so any drift shows up in `dvc status`.
@@ -186,6 +194,58 @@ and protocol as above; ALS and the two-tower model were both tuned on these user
 
 ![Accuracy vs popularity of recommendations, every model](reports/figures/14_accuracy_vs_popularity.png)
 
+## Two-stage results: retrieval + re-ranking (tune users)
+
+Details and charts in [`notebooks/04_reranker.ipynb`](notebooks/04_reranker.ipynb). Stage 1 (the
+two-tower ensemble) keeps each user's top 200 of ~3,300 candidates; stage 2, a LightGBM
+LambdaRank model over 19 features, re-orders them. The re-ranker learns from the validation week
+(logged views from Aug 30, one per pair, every feature computed from data before it) of 4,248
+users outside the fully observed matrix; 533 more stop its boosting and pick its configuration,
+and 497 are kept only for reporting. The 1,411 tune and test users play no part in training it.
+
+| Model | NDCG@10 [95% CI] | Recall@50 | Popularity of recommendations |
+|---|---|---|---|
+| ALS | 0.274 [0.246, 0.302] | 0.030 | 81st percentile |
+| two-stage (two-tower + re-ranker) | 0.293 [0.267, 0.318] | **0.036** | 56th percentile |
+| two-tower alone | **0.298** [0.271, 0.325] | 0.035 | 49th percentile |
+
+Each comparison below is paired on the same users, against ordering by the two-tower score:
+
+| Where | Δ NDCG@10 [95% CI] | Better for |
+|---|---|---|
+| untouched validation users (logged views) | **+0.043** [+0.026, +0.061] | 61% of users |
+| tune users, top-200 shortlist re-ranked | −0.005 [−0.023, +0.014] | 48% |
+| tune users, every candidate re-ranked | **−0.040** [−0.060, −0.018] | 42% |
+| tune users, re-ranker cross-fitted on other tune users (upper bound) | +0.002 [−0.019, +0.024] | 48% |
+
+- **A clear gain on logged data, none on real preferences.** On validation users it never saw,
+  the re-ranker beats two-tower ordering by +0.043; on the fully observed tune users there is no
+  detectable gain. An offline win on logged data is a hypothesis, which is what Phase 5's A/B
+  simulation is for.
+- **It is not only *what* the ranker learns from.** Trained by cross-fitting on the fully
+  observed shortlists of other tune users (the right distribution, used here only as a
+  diagnostic), it still gains nothing. For these heavy users the extra features (popularity,
+  platform engagement rates, length and category affinities) add little beyond the two-tower
+  score; the logged-data gain reflects patterns of the logged world rather than preferences.
+- **The shortlist protects the re-ranker.** Asked to order all ~3,300 candidates, including a
+  long tail unlike the views it learned from, it does clearly worse (−0.040). Retrieval keeps it
+  on familiar ground, which is one practical reason two-stage systems shortlist first.
+- **What reorders a user's list (TreeSHAP, centred within each user):** engagement popularity
+  first, then video length (shorter videos move up: both the validation week and the fully
+  observed users like short videos slightly more often, as the labels are length-neutral only on
+  the training weeks), the two-tower and ALS scores, and video age. Platform-wide like, share
+  and comment rates matter little.
+- **Retrieval is the ceiling.** The top 200 hold 11% of a tune user's liked videos on average;
+  a perfect shortlist would hold 58% (most users like more than 200 of the candidates, so not
+  all of their liked videos fit).
+- **Fairness.** ALS and the two-tower model were tuned on the tune users and the re-ranker was
+  not, which favours them slightly; a single two-tower run also varies by ±0.006. The untouched
+  test users will give the final comparison.
+
+![Re-ranking gains: logged vs fully observed users](reports/figures/15_two_stage_paired.png)
+
+![What reorders a user's shortlist (within-user TreeSHAP)](reports/figures/18_reranker_shap_beeswarm.png)
+
 ## Experiment tracking
 
 Every training run is logged to both trackers through one small interface
@@ -247,6 +307,10 @@ What this design does and doesn't guarantee:
   summarise the whole collection period, including weeks that overlap the evaluation matrix.
   They are user-level, not (user, video) reactions, so they cannot leak a label, but they are
   not strictly "as of" the training cut-off.
+- **The re-ranker learns from logged views.** Its gain on them does not carry over to the
+  fully observed users; a cross-fitted check on those users suggests its features add little
+  beyond the two-tower score, so the gap is not only exposure bias (see the two-stage results).
+  A time shift between the validation week and the earlier weeks was not tested separately.
 - **Cold-start videos are not evaluated.** The video tower can score a video it never saw in
   training (from its categories and length), but every tune/test candidate has training views,
   so that ability is tested on synthetic data only.
@@ -290,12 +354,14 @@ Findings from building the `prepare` stage (full numbers in `reports/data_summar
 │   │   ├── split.py         # train/valid/tune/test split + labeling stage
 │   │   └── categories.py    # English names for the Chinese category labels
 │   ├── tracking.py          # MLflow + W&B behind one interface
+│   ├── checkpointing.py     # fingerprints, atomic writes, resumable progress logs
 │   ├── evaluation/
 │   │   ├── ranking.py       # per-user metrics, bootstrap CIs, paired comparisons
 │   │   └── concentration.py # Gini, Lorenz curve, top-k share
 │   ├── models/              # random, popularity, category affinity, ALS (Recommender protocol)
 │   │   └── two_tower/       # encoding, towers + losses, training, checkpoints, seed ensemble
-│   ├── experiments/         # leaderboard + model searches (DVC stages), W&B sweep trial
+│   ├── reranking/           # ranking features, LightGBM ranker, two-stage pipeline
+│   ├── experiments/         # searches, leaderboard, retrieval, re-ranker (DVC stages)
 │   └── viz/
 │       └── style.py         # chart style with a colorblind-safe palette
 ├── notebooks/               # jupytext .py sources + executed .ipynb
@@ -312,7 +378,7 @@ Findings from building the `prepare` stage (full numbers in `reports/data_summar
 1. **EDA, debiased labels and train/validation split** (done)
 2. **Evaluation harness, popularity and ALS baselines, MLflow + W&B tracking** (done)
 3. **Two-tower neural model, category-affinity baseline, feature pipeline** (done)
-4. LightGBM re-ranker with feature engineering and SHAP
+4. **Two-stage pipeline: LightGBM re-ranker with feature engineering and SHAP** (done)
 5. A/B testing framework on the fully observed matrix
 6. Streamlit demo app
 

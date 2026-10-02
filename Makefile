@@ -19,9 +19,10 @@ eda: ## Re-run the EDA notebook (after `make data`) and refresh reports/figures
 results: ## Re-run the results notebooks (after `make experiments`)
 	uv run jupytext --to notebook --execute notebooks/02_baselines.py
 	uv run jupytext --to notebook --execute notebooks/03_two_tower.py
+	uv run jupytext --to notebook --execute notebooks/04_reranker.py
 
-experiments: ## Model searches + leaderboard on the tune users (tracked in MLflow and W&B)
-	uv run dvc repro als_search two_tower_search leaderboard
+experiments: ## Model searches, leaderboard and two-stage re-ranker (tracked in MLflow and W&B)
+	uv run dvc repro als_search two_tower_search leaderboard retrieval reranker
 
 mlflow-ui: ## Browse tracked runs at http://127.0.0.1:5000
 	uv run mlflow ui --backend-store-uri sqlite:///mlflow.db
