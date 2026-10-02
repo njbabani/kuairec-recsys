@@ -202,3 +202,69 @@ stages:
     metrics:
       - ${data.metrics_dir}/reranker.json:
           cache: false
+
+  final_evaluation:
+    # The one-time evaluation on the untouched test users, and each policy's A/B sessions.
+    cmd: python -m recsys.experiments.final_evaluation
+    deps:
+      - ${data.splits_dir}
+      - ${data.features_dir}
+      - ${data.processed_dir}/video_daily_stats.parquet
+      - ${data.retrieval_path}
+      - ${data.models_dir}/reranker
+      - src/recsys/abtest/outcomes.py
+      - src/recsys/checkpointing.py
+      - src/recsys/config.py
+      - src/recsys/data/labels.py
+      - src/recsys/data/schemas.py
+      - src/recsys/data/split.py
+      - src/recsys/evaluation/concentration.py
+      - src/recsys/evaluation/ranking.py
+      - src/recsys/experiments/final_evaluation.py
+      - src/recsys/experiments/reranker.py
+      - src/recsys/experiments/reranker_analysis.py
+      - src/recsys/experiments/runner.py
+      - src/recsys/hashing.py
+      - src/recsys/io.py
+      - src/recsys/models/als.py
+      - src/recsys/models/base.py
+      - src/recsys/models/category_affinity.py
+      - src/recsys/models/popularity.py
+      - src/recsys/reranking/candidates.py
+      - src/recsys/reranking/features.py
+      - src/recsys/reranking/ranker.py
+      - src/recsys/reranking/two_stage.py
+      - src/recsys/tracking.py
+    params:
+      - models
+      - reranker.prior_strength
+      - reranker.retrieve_top_n
+      - evaluation
+      - split.valid_start
+      - ab_test.session_length
+    outs:
+      - ${data.ab_dir}/sessions.parquet
+    metrics:
+      - ${data.metrics_dir}/test_evaluation.json:
+          cache: false
+
+  ab_test:
+    cmd: python -m recsys.experiments.ab_test
+    deps:
+      - ${data.ab_dir}/sessions.parquet
+      - ${data.splits_dir}
+      - src/recsys/abtest/outcomes.py
+      - src/recsys/abtest/simulation.py
+      - src/recsys/abtest/stats.py
+      - src/recsys/config.py
+      - src/recsys/experiments/ab_test.py
+      - src/recsys/hashing.py
+      - src/recsys/io.py
+      - src/recsys/tracking.py
+    params:
+      - ab_test
+    outs:
+      - ${data.ab_dir}/user_outcomes.parquet
+    metrics:
+      - ${data.metrics_dir}/ab_test.json:
+          cache: false

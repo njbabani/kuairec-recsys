@@ -24,6 +24,7 @@ data:
   models_dir: models
   retrieval_path: data/retrieval/two_tower_scores.parquet
   reranker_dir: data/reranker
+  ab_dir: data/ab
 label:
   bucket_width_ratio: 1.15
   min_views_per_bucket: 10000
@@ -93,6 +94,21 @@ reranker:
   prior_strength: 20
   shap_sample_rows: 5000
   seed: 42
+ab_test:
+  session_length: 10
+  treatment_share: 0.5
+  salt: ab-salt
+  alpha: 0.05
+  power: 0.8
+  simulations: 2000
+  looks: 10
+  srm_drop_shares: [0.05, 0.2]
+  seed: 42
+  aa_policy: two_tower
+  experiments:
+    - {name: two_tower_vs_als, control: als, treatment: two_tower}
+    - {name: two_stage_vs_two_tower, control: two_tower, treatment: two_stage}
+  primary_experiment: two_tower_vs_als
 tracking:
   backends: [mlflow, wandb]
   experiment: kuairec-recsys
@@ -162,6 +178,8 @@ def test_load_params_parses_modelling_and_tracking_sections(tmp_path):
     assert params.data.checkpoints_dir == Path("checkpoints")
     assert params.reranker.num_leaves == (31, 127)
     assert params.reranker.retrieve_top_n == 200
+    assert params.ab_test.experiment("two_tower_vs_als").control == "als"
+    assert params.ab_test.srm_drop_shares == (0.05, 0.2)
     assert params.data.features_dir == Path("data/features")
     assert params.tracking.backends == ("mlflow", "wandb")
     assert params.tracking.wandb_mode == "offline"
@@ -192,6 +210,11 @@ def test_load_params_parses_modelling_and_tracking_sections(tmp_path):
         ("feature_fraction: 0.8", "feature_fraction: 0"),
         ("report_user_share: 0.1", "report_user_share: 0.9"),
         ("cross_fit_folds: 5", "cross_fit_folds: 1"),
+        ("treatment: two_stage}", "treatment: two_tower}"),
+        ("primary_experiment: two_tower_vs_als", "primary_experiment: missing"),
+        ("srm_drop_shares: [0.05, 0.2]", "srm_drop_shares: []"),
+        ("srm_drop_shares: [0.05, 0.2]", "srm_drop_shares: [0.05, 1.0]"),
+        ("control: als, treatment: two_tower}", "control: als, treatment: lightfm}"),
     ],
     ids=[
         "metric-k-not-evaluated",
@@ -216,11 +239,23 @@ def test_load_params_parses_modelling_and_tracking_sections(tmp_path):
         "no-features",
         "no-users-left-to-fit",
         "one-fold",
+        "experiment-against-itself",
+        "unknown-primary-experiment",
+        "no-srm-drop-shares",
+        "srm-drop-everyone",
+        "unknown-policy",
     ],
 )
 def test_load_params_rejects_invalid_modelling_settings(tmp_path, old, new):
     with pytest.raises(ValidationError):
         load_params(write_params(tmp_path, VALID_PARAMS.replace(old, new)))
+
+
+def test_unknown_ab_experiment_names_are_a_clear_error(tmp_path):
+    params = load_params(write_params(tmp_path, VALID_PARAMS))
+
+    with pytest.raises(KeyError, match="no_such_test"):
+        params.ab_test.experiment("no_such_test")
 
 
 def test_load_params_rejects_malformed_md5(tmp_path):

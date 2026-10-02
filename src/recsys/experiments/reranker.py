@@ -21,12 +21,18 @@ import logging
 from dataclasses import asdict, dataclass
 from datetime import date
 from pathlib import Path
-from typing import Any
+from typing import Any, Self
 
 import polars as pl
 
 from recsys.checkpointing import ProgressLog, fingerprint, remove_if_empty
-from recsys.config import EvaluationParams, ModelParams, RerankerParams, load_params
+from recsys.config import (
+    DataParams,
+    EvaluationParams,
+    ModelParams,
+    RerankerParams,
+    load_params,
+)
 from recsys.data.split import split_users
 from recsys.evaluation.ranking import EvaluationResult, popularity_percentiles
 from recsys.experiments.reranker_analysis import (
@@ -92,11 +98,22 @@ DAILY_STATS_COLUMNS = (
 
 
 @dataclass(frozen=True)
-class RerankerPaths:
+class InputPaths:
+    """Where the inputs of stage two live (shared with the final test evaluation)."""
+
     splits_dir: Path
     features_dir: Path
     processed_dir: Path
     retrieval_path: Path
+
+    @classmethod
+    def from_params(cls, data: DataParams) -> Self:
+        return cls(data.splits_dir, data.features_dir, data.processed_dir, data.retrieval_path)
+
+
+@dataclass(frozen=True)
+class RerankerPaths:
+    inputs: InputPaths
     metrics_path: Path
     model_dir: Path
     checkpoint_dir: Path
@@ -116,7 +133,7 @@ class Inputs:
     evaluation_users: pl.DataFrame  # user_id of every tune and test user
 
 
-def load_inputs(paths: RerankerPaths) -> Inputs:
+def load_inputs(paths: InputPaths) -> Inputs:
     train = pl.read_parquet(
         paths.splits_dir / "train.parquet", columns=[*MODEL_COLUMNS, "duration_bucket"]
     )
@@ -397,7 +414,7 @@ def run_reranker(
     cutoff: date,
     tracker: Tracker,
 ) -> dict[str, Any]:
-    inputs = load_inputs(paths)
+    inputs = load_inputs(paths.inputs)
     stage_one = fit_stage_one(inputs, models)
     sources = FeatureSources(
         inputs.train, inputs.user_features, inputs.video_features, inputs.daily_stats, cutoff
@@ -445,10 +462,7 @@ def main() -> None:
     params = load_params()
     data = params.data
     paths = RerankerPaths(
-        splits_dir=data.splits_dir,
-        features_dir=data.features_dir,
-        processed_dir=data.processed_dir,
-        retrieval_path=data.retrieval_path,
+        inputs=InputPaths.from_params(data),
         metrics_path=data.metrics_dir / "reranker.json",
         model_dir=data.models_dir / "reranker",
         checkpoint_dir=data.checkpoints_dir / "reranker",

@@ -2,7 +2,7 @@
 
 from datetime import date
 from pathlib import Path
-from typing import Literal, Self
+from typing import Annotated, Literal, Self
 
 import yaml
 from pydantic import (
@@ -38,6 +38,7 @@ class DataParams(_FrozenModel):
     models_dir: Path  # trained models written by the leaderboard (versioned by DVC)
     retrieval_path: Path  # two-tower scores of every pair the re-ranker needs
     reranker_dir: Path  # re-ranker outputs too large for git (SHAP sample)
+    ab_dir: Path  # A/B simulation inputs and per-user outcomes
 
 
 class LabelParams(_FrozenModel):
@@ -205,6 +206,53 @@ class RerankerParams(_FrozenModel):
         return self
 
 
+Policy = Literal["random", "popularity_engagement", "als", "two_tower", "two_stage"]
+
+
+class ABExperimentParams(_FrozenModel):
+    name: str = Field(min_length=1)
+    control: Policy
+    treatment: Policy
+
+    @model_validator(mode="after")
+    def _arms_differ(self) -> Self:
+        if self.control == self.treatment:
+            raise ValueError(f"Experiment {self.name} compares {self.control} with itself")
+        return self
+
+
+class ABTestParams(_FrozenModel):
+    """Offline A/B experiments on the fully observed test users."""
+
+    session_length: PositiveInt  # videos a policy shows a user per session (its top N)
+    treatment_share: float = Field(gt=0, lt=1)
+    salt: str = Field(min_length=1)
+    alpha: float = Field(gt=0, lt=0.5)
+    power: float = Field(gt=0.5, lt=1)
+    simulations: int = Field(ge=100)  # re-randomised experiments per check
+    looks: int = Field(ge=2)  # interim looks in the sequential-testing demo
+    # Shares of treatment users a simulated logging bug loses, one demonstration each.
+    srm_drop_shares: tuple[Annotated[float, Field(gt=0, lt=1)], ...] = Field(min_length=1)
+    seed: int
+    aa_policy: Policy  # the policy both arms run in the A/A test
+    experiments: tuple[ABExperimentParams, ...] = Field(min_length=1)
+    primary_experiment: str  # the experiment used for the power analysis and peeking demo
+
+    @model_validator(mode="after")
+    def _experiments_are_consistent(self) -> Self:
+        names = tuple(experiment.name for experiment in self.experiments)
+        _require_distinct(names, "experiment name")
+        if self.primary_experiment not in names:
+            raise ValueError(f"primary_experiment must be one of {names}")
+        return self
+
+    def experiment(self, name: str) -> ABExperimentParams:
+        for experiment in self.experiments:
+            if experiment.name == name:
+                return experiment
+        raise KeyError(f"No A/B experiment named {name!r}")
+
+
 class TrackingParams(_FrozenModel):
     backends: tuple[Literal["mlflow", "wandb"], ...]
     experiment: str = Field(min_length=1)
@@ -228,6 +276,7 @@ class Params(_FrozenModel):
     als_search: ALSSearchParams
     two_tower_search: TwoTowerSearchParams
     reranker: RerankerParams
+    ab_test: ABTestParams
     tracking: TrackingParams
 
 

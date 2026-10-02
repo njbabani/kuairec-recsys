@@ -20,9 +20,10 @@ results: ## Re-run the results notebooks (after `make experiments`)
 	uv run jupytext --to notebook --execute notebooks/02_baselines.py
 	uv run jupytext --to notebook --execute notebooks/03_two_tower.py
 	uv run jupytext --to notebook --execute notebooks/04_reranker.py
+	uv run jupytext --to notebook --execute notebooks/05_ab_testing.py
 
-experiments: ## Model searches, leaderboard and two-stage re-ranker (tracked in MLflow and W&B)
-	uv run dvc repro als_search two_tower_search leaderboard retrieval reranker
+experiments: ## Model searches, re-ranker, final test evaluation and A/B tests (MLflow + W&B)
+	uv run dvc repro als_search two_tower_search leaderboard retrieval reranker final_evaluation ab_test
 
 mlflow-ui: ## Browse tracked runs at http://127.0.0.1:5000
 	uv run mlflow ui --backend-store-uri sqlite:///mlflow.db

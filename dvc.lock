@@ -5,8 +5,8 @@ stages:
     deps:
     - path: src/recsys/config.py
       hash: md5
-      md5: 0d4ecb1a1bd5fb00de99f652acd11343
-      size: 8333
+      md5: 43dbed1673cd957c2cb8f654d8cb0422
+      size: 10389
     - path: src/recsys/data/download.py
       hash: md5
       md5: f7df34ca3344dab4a7bce128d8c7d6ae
@@ -30,8 +30,8 @@ stages:
       size: 431964858
     - path: src/recsys/config.py
       hash: md5
-      md5: 0d4ecb1a1bd5fb00de99f652acd11343
-      size: 8333
+      md5: 43dbed1673cd957c2cb8f654d8cb0422
+      size: 10389
     - path: src/recsys/data/prepare.py
       hash: md5
       md5: c2466fa9d8a800a1a581ab4870fc5482
@@ -64,8 +64,8 @@ stages:
       nfiles: 6
     - path: src/recsys/config.py
       hash: md5
-      md5: 0d4ecb1a1bd5fb00de99f652acd11343
-      size: 8333
+      md5: 43dbed1673cd957c2cb8f654d8cb0422
+      size: 10389
     - path: src/recsys/data/labels.py
       hash: md5
       md5: 3e79cfb885442c3bee5ba625ce7ff5db
@@ -116,8 +116,8 @@ stages:
       nfiles: 4
     - path: src/recsys/config.py
       hash: md5
-      md5: 0d4ecb1a1bd5fb00de99f652acd11343
-      size: 8333
+      md5: 43dbed1673cd957c2cb8f654d8cb0422
+      size: 10389
     - path: src/recsys/evaluation/concentration.py
       hash: md5
       md5: 6ca7305a97b85edda873752b45fd052d
@@ -194,8 +194,8 @@ stages:
       nfiles: 6
     - path: src/recsys/config.py
       hash: md5
-      md5: 0d4ecb1a1bd5fb00de99f652acd11343
-      size: 8333
+      md5: 43dbed1673cd957c2cb8f654d8cb0422
+      size: 10389
     - path: src/recsys/data/features.py
       hash: md5
       md5: a4ae096309b85a2a53e5b97449d023d9
@@ -229,8 +229,8 @@ stages:
       size: 3276
     - path: src/recsys/config.py
       hash: md5
-      md5: 0d4ecb1a1bd5fb00de99f652acd11343
-      size: 8333
+      md5: 43dbed1673cd957c2cb8f654d8cb0422
+      size: 10389
     - path: src/recsys/evaluation/concentration.py
       hash: md5
       md5: 6ca7305a97b85edda873752b45fd052d
@@ -336,8 +336,8 @@ stages:
       size: 3276
     - path: src/recsys/config.py
       hash: md5
-      md5: 0d4ecb1a1bd5fb00de99f652acd11343
-      size: 8333
+      md5: 43dbed1673cd957c2cb8f654d8cb0422
+      size: 10389
     - path: src/recsys/evaluation/concentration.py
       hash: md5
       md5: 6ca7305a97b85edda873752b45fd052d
@@ -466,8 +466,8 @@ stages:
       size: 3276
     - path: src/recsys/config.py
       hash: md5
-      md5: 0d4ecb1a1bd5fb00de99f652acd11343
-      size: 8333
+      md5: 43dbed1673cd957c2cb8f654d8cb0422
+      size: 10389
     - path: src/recsys/experiments/retrieval.py
       hash: md5
       md5: ad8aa4d81a66139f4bd168701c6591b2
@@ -535,8 +535,8 @@ stages:
       size: 3276
     - path: src/recsys/config.py
       hash: md5
-      md5: 0d4ecb1a1bd5fb00de99f652acd11343
-      size: 8333
+      md5: 43dbed1673cd957c2cb8f654d8cb0422
+      size: 10389
     - path: src/recsys/data/labels.py
       hash: md5
       md5: 3e79cfb885442c3bee5ba625ce7ff5db
@@ -559,8 +559,8 @@ stages:
       size: 8734
     - path: src/recsys/experiments/reranker.py
       hash: md5
-      md5: 7f9237da84bb94e86427ea53c303d747
-      size: 16712
+      md5: dfbbdd2e8c48733fff17ea0579127bf5
+      size: 16962
     - path: src/recsys/experiments/reranker_analysis.py
       hash: md5
       md5: 6d82c0576a185c7d9045aa63f53d1ee1
@@ -668,3 +668,250 @@ stages:
       hash: md5
       md5: f088a45242adc740da1831327c691e7a
       size: 45230
+  final_evaluation:
+    cmd: python -m recsys.experiments.final_evaluation
+    deps:
+    - path: data/features
+      hash: md5
+      md5: 1c44bedff131bfd96ff1d93a9855e6a1.dir
+      size: 209657
+      nfiles: 2
+    - path: data/processed/video_daily_stats.parquet
+      hash: md5
+      md5: c41f63de0431a37667214b60b1cd01b8
+      size: 22098460
+    - path: data/retrieval/two_tower_scores.parquet
+      hash: md5
+      md5: 46cee505c834c436ab6ce64760b0118b
+      size: 53956492
+    - path: data/splits
+      hash: md5
+      md5: eb3ef3245a68e68dfed9072b97d773a8.dir
+      size: 272957510
+      nfiles: 4
+    - path: models/reranker
+      hash: md5
+      md5: 071f65708967f61b4a5eecb6aeee954e.dir
+      size: 468939
+      nfiles: 2
+    - path: src/recsys/abtest/outcomes.py
+      hash: md5
+      md5: a88be999e158663312a0ab469255f687
+      size: 2207
+    - path: src/recsys/checkpointing.py
+      hash: md5
+      md5: 303c8e2c3a75d16111bd119283a123d3
+      size: 3276
+    - path: src/recsys/config.py
+      hash: md5
+      md5: 43dbed1673cd957c2cb8f654d8cb0422
+      size: 10389
+    - path: src/recsys/data/labels.py
+      hash: md5
+      md5: 3e79cfb885442c3bee5ba625ce7ff5db
+      size: 6992
+    - path: src/recsys/data/schemas.py
+      hash: md5
+      md5: 0514b81d032cea6049a1408b25434977
+      size: 3819
+    - path: src/recsys/data/split.py
+      hash: md5
+      md5: d7764dac406f03a5d74d084a50458970
+      size: 8979
+    - path: src/recsys/evaluation/concentration.py
+      hash: md5
+      md5: 6ca7305a97b85edda873752b45fd052d
+      size: 2064
+    - path: src/recsys/evaluation/ranking.py
+      hash: md5
+      md5: 230697e3d07c72c5eb13127bd5cc8005
+      size: 8734
+    - path: src/recsys/experiments/final_evaluation.py
+      hash: md5
+      md5: b21deb1e552d9151d57c0f4331200a54
+      size: 5922
+    - path: src/recsys/experiments/reranker.py
+      hash: md5
+      md5: dfbbdd2e8c48733fff17ea0579127bf5
+      size: 16962
+    - path: src/recsys/experiments/reranker_analysis.py
+      hash: md5
+      md5: 6d82c0576a185c7d9045aa63f53d1ee1
+      size: 6414
+    - path: src/recsys/experiments/runner.py
+      hash: md5
+      md5: 21c6c482e3026df26d99d9679d82056d
+      size: 3972
+    - path: src/recsys/hashing.py
+      hash: md5
+      md5: fa1a0281bc0b3ea76f0357126d5d3e00
+      size: 602
+    - path: src/recsys/io.py
+      hash: md5
+      md5: d0eee65421e99c5c2f18df66f5ff0c45
+      size: 1104
+    - path: src/recsys/models/als.py
+      hash: md5
+      md5: 05b84ea918c63a66fa504a6e7caa1bb7
+      size: 4194
+    - path: src/recsys/models/base.py
+      hash: md5
+      md5: b8ea14fa8a9203a02a3feadd4ef2a18d
+      size: 723
+    - path: src/recsys/models/category_affinity.py
+      hash: md5
+      md5: 7343c58c4da45789ef88f9c5756a9e7c
+      size: 3619
+    - path: src/recsys/models/popularity.py
+      hash: md5
+      md5: 8edae76d83c46815c19e4fd6bb4116c5
+      size: 2862
+    - path: src/recsys/reranking/candidates.py
+      hash: md5
+      md5: a335d6055dd4cdb137377b6a61446ce1
+      size: 2655
+    - path: src/recsys/reranking/features.py
+      hash: md5
+      md5: b8a47df6a1ee9d98e1d1156e9688f828
+      size: 9692
+    - path: src/recsys/reranking/ranker.py
+      hash: md5
+      md5: 5e193609999bc20d207ee9d5b393f54c
+      size: 6052
+    - path: src/recsys/reranking/two_stage.py
+      hash: md5
+      md5: 70207492689b75063359616238d1f19d
+      size: 4500
+    - path: src/recsys/tracking.py
+      hash: md5
+      md5: 273eb44403d108604a249fde80372128
+      size: 8520
+    params:
+      params.yaml:
+        ab_test.session_length: 10
+        evaluation:
+          ks:
+          - 10
+          - 50
+          bootstrap_samples: 1000
+          seed: 42
+          select_metric: ndcg_at_10
+        models:
+          random:
+            seed: 42
+          popularity_engagement:
+            prior_strength: 50
+          category_affinity:
+            prior_strength: 20
+          als:
+            factors: 64
+            regularization: 0.1
+            alpha: 1
+            iterations: 15
+            seed: 42
+          two_tower:
+            loss: bce
+            embedding_dim: 32
+            hidden_dim: 128
+            epochs: 7
+            batch_size: 4096
+            learning_rate: 0.001
+            weight_decay: 0.0
+            seeds:
+            - 42
+            - 43
+            - 44
+            device: cpu
+        reranker.prior_strength: 20
+        reranker.retrieve_top_n: 200
+        split.valid_start: '2020-08-30'
+    outs:
+    - path: data/ab/sessions.parquet
+      hash: md5
+      md5: 5231c3e1570a8f6f50071575b70f6e2d
+      size: 72121
+    - path: reports/metrics/test_evaluation.json
+      hash: md5
+      md5: 92e480b4cfa1aabfe1e99496f5fa55d4
+      size: 9333
+  ab_test:
+    cmd: python -m recsys.experiments.ab_test
+    deps:
+    - path: data/ab/sessions.parquet
+      hash: md5
+      md5: 5231c3e1570a8f6f50071575b70f6e2d
+      size: 72121
+    - path: data/splits
+      hash: md5
+      md5: eb3ef3245a68e68dfed9072b97d773a8.dir
+      size: 272957510
+      nfiles: 4
+    - path: src/recsys/abtest/outcomes.py
+      hash: md5
+      md5: a88be999e158663312a0ab469255f687
+      size: 2207
+    - path: src/recsys/abtest/simulation.py
+      hash: md5
+      md5: a1e1943aa37f30ed4184a54337b25a89
+      size: 13071
+    - path: src/recsys/abtest/stats.py
+      hash: md5
+      md5: 2f9de13bf9ea9aac4dc1d864a8f5898f
+      size: 7579
+    - path: src/recsys/config.py
+      hash: md5
+      md5: 43dbed1673cd957c2cb8f654d8cb0422
+      size: 10389
+    - path: src/recsys/experiments/ab_test.py
+      hash: md5
+      md5: 7f181aa5b1c986b90bf1517f41bf6a6f
+      size: 13311
+    - path: src/recsys/hashing.py
+      hash: md5
+      md5: fa1a0281bc0b3ea76f0357126d5d3e00
+      size: 602
+    - path: src/recsys/io.py
+      hash: md5
+      md5: d0eee65421e99c5c2f18df66f5ff0c45
+      size: 1104
+    - path: src/recsys/tracking.py
+      hash: md5
+      md5: 273eb44403d108604a249fde80372128
+      size: 8520
+    params:
+      params.yaml:
+        ab_test:
+          session_length: 10
+          treatment_share: 0.5
+          salt: kuairec-ab-v1
+          alpha: 0.05
+          power: 0.8
+          simulations: 2000
+          looks: 10
+          srm_drop_shares:
+          - 0.05
+          - 0.1
+          - 0.2
+          - 0.3
+          seed: 42
+          aa_policy: two_tower
+          experiments:
+          - name: als_vs_popularity
+            control: popularity_engagement
+            treatment: als
+          - name: two_tower_vs_als
+            control: als
+            treatment: two_tower
+          - name: two_stage_vs_two_tower
+            control: two_tower
+            treatment: two_stage
+          primary_experiment: two_tower_vs_als
+    outs:
+    - path: data/ab/user_outcomes.parquet
+      hash: md5
+      md5: d77ebfadc4ef6e610da1b1ed96b240d8
+      size: 34415
+    - path: reports/metrics/ab_test.json
+      hash: md5
+      md5: 93874c2f4afeec8244f614c77405b8e2
+      size: 14845

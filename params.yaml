@@ -16,6 +16,7 @@ data:
   models_dir: models  # trained models from the leaderboard (DVC output)
   retrieval_path: data/retrieval/two_tower_scores.parquet  # stage-1 scores for the re-ranker
   reranker_dir: data/reranker  # SHAP sample for the notebook
+  ab_dir: data/ab  # A/B sessions and per-user outcomes
 
 label:
   # People watch ~7.5 s of a video whatever its length, so raw watch_ratio mostly measures
@@ -112,6 +113,25 @@ reranker:
   prior_strength: 20
   shap_sample_rows: 5000
   seed: 42
+
+ab_test:
+  # Offline A/B experiments on the 1,112 fully observed test users. A session is a policy's top
+  # videos for a user; its outcome (liked videos, watch time) is the user's recorded reaction.
+  session_length: 10
+  treatment_share: 0.5
+  salt: kuairec-ab-v1  # stable hash of salt:user_id assigns the arms
+  alpha: 0.05
+  power: 0.8
+  simulations: 2000  # re-randomised experiments behind every operating characteristic
+  looks: 10  # interim looks in the sequential-testing (peeking) demo
+  srm_drop_shares: [0.05, 0.1, 0.2, 0.3]  # treatment users a simulated logging bug loses
+  seed: 42
+  aa_policy: two_tower
+  experiments:
+    - {name: als_vs_popularity, control: popularity_engagement, treatment: als}
+    - {name: two_tower_vs_als, control: als, treatment: two_tower}
+    - {name: two_stage_vs_two_tower, control: two_tower, treatment: two_stage}
+  primary_experiment: two_tower_vs_als
 
 tracking:
   backends: [mlflow, wandb]

@@ -1,5 +1,6 @@
 """Shared fixtures for the whole suite."""
 
+import math
 from collections.abc import Callable
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -45,3 +46,16 @@ def make_interactions() -> Callable[..., pl.DataFrame]:
         return pl.DataFrame(data).with_columns(pl.col("event_time").cast(EVENT_TIME_DTYPE))
 
     return _make
+
+
+STANDARD_ERRORS_ALLOWED = 4  # a correct method misses a 4-SE band about once in 16,000 runs
+
+
+@pytest.fixture
+def rate_tolerance() -> Callable[[float, int], float]:
+    """How far a rate simulated from ``trials`` experiments may stray from its expected value."""
+
+    def _tolerance(rate: float, trials: int) -> float:
+        return STANDARD_ERRORS_ALLOWED * math.sqrt(rate * (1 - rate) / trials)
+
+    return _tolerance
