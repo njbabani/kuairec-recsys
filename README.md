@@ -40,7 +40,7 @@ show each arm different videos from that set and look up the real reaction.
   resumable checkpoints, MLflow and W&B tracking, CI with an enforced coverage gate, and a
   [Streamlit demo](#streamlit-demo) that never loads a model.
 
-![The demo's A/B lab: an experiment's estimates against the true effect](reports/figures/demo_ab_lab_run.jpg)
+![Three simulated A/B tests against their known true effects: only the large effect is detected](reports/figures/20_ab_readouts.png)
 
 **Contents:** [Quickstart](#quickstart) · [Pipeline](#pipeline) ·
 [EDA](#key-findings-from-the-eda) · [Baselines](#baseline-results-tune-users) ·
