@@ -1,0 +1,3 @@
+# Executed notebooks are generated from their jupytext .py sources (`make eda`, `make results`):
+# keep them out of GitHub's language statistics and collapse them in diffs.
+notebooks/*.ipynb linguist-generated=true
