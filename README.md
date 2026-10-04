@@ -1,4 +1,4 @@
-# KuaiRec Recommender
+# KuaiRec recommender
 
 [![CI](https://github.com/njbabani/kuairec-recsys/actions/workflows/ci.yml/badge.svg)](https://github.com/njbabani/kuairec-recsys/actions/workflows/ci.yml)
 [![Coverage](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/njbabani/kuairec-recsys/badges/coverage.json)](https://github.com/njbabani/kuairec-recsys/actions/workflows/ci.yml)
@@ -7,98 +7,91 @@
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 [![License: MIT](https://img.shields.io/badge/license-MIT-yellow)](LICENSE)
 
-[![PyTorch](https://img.shields.io/badge/PyTorch-two--tower-EE4C2C?logo=pytorch&logoColor=white)](#two-tower-results-tune-users)
-[![LightGBM](https://img.shields.io/badge/LightGBM-LambdaRank-9ACD32)](#two-stage-results-retrieval--re-ranking-tune-users)
+[![PyTorch](https://img.shields.io/badge/PyTorch-two--tower-EE4C2C?logo=pytorch&logoColor=white)](#two-tower-model)
+[![LightGBM](https://img.shields.io/badge/LightGBM-LambdaRank-9ACD32)](#re-ranking)
 [![DVC](https://img.shields.io/badge/pipeline-DVC-13ADC7?logo=dvc&logoColor=white)](#pipeline)
 [![MLflow](https://img.shields.io/badge/tracking-MLflow-0194E2?logo=mlflow&logoColor=white)](#experiment-tracking)
 [![Weights & Biases](https://img.shields.io/badge/tracking-W%26B-FFBE00?logo=weightsandbiases&logoColor=black)](#experiment-tracking)
 [![Streamlit](https://img.shields.io/badge/demo-Streamlit-FF4B4B?logo=streamlit&logoColor=white)](#streamlit-demo)
-[![Data: KuaiRec](https://img.shields.io/badge/data-KuaiRec_(CC_BY_4.0)-lightgrey)](#dataset--citation)
+[![Data: KuaiRec](https://img.shields.io/badge/data-KuaiRec_(CC_BY_4.0)-lightgrey)](#dataset-and-citation)
 
-An end-to-end short-video recommender built on [KuaiRec](https://kuairec.com/), with a
-**simulated A/B testing framework** that uses real user reactions instead of made-up ones.
+A short-video recommender built on [KuaiRec](https://kuairec.com/), along with a way to A/B test
+it against real user reactions.
 
-KuaiRec comes from Kuaishou, a TikTok-style app. Besides a normal logged feed, it contains a
-*fully observed* matrix: 1,411 users × 3,327 videos with 99.6% of cells filled. For those users
-and videos we know how each user reacted to (almost) every video, so an offline A/B test can
-show each arm different videos from that set and look up the real reaction.
+KuaiRec comes from Kuaishou, a TikTok-style app. Alongside the usual logged feed it has a
+"fully observed" matrix: 1,411 users who each reacted to almost all of the same 3,327 videos
+(99.6% of the cells are filled). That matrix is why I picked this dataset. When you know how
+every user reacted to every video, you can simulate an A/B test properly. Each arm gets its own
+recommendations, you look up what the user actually did with them, and since you also know what
+they would have done in the other arm, you know the true effect the test is trying to estimate.
 
-## At a glance
+## Summary
 
-- **A two-stage recommender.** A PyTorch two-tower model retrieves each user's top 200
-  videos and a LightGBM LambdaRank model re-orders them. On 1,112 untouched test users it
-  reaches **NDCG@10 0.306**, ahead of the two-tower model alone (**+0.017** [+0.006, +0.027],
-  paired on the same users) and of ALS (+0.035).
-- **A/B tests with a known right answer.** These users reacted to almost every video, so every
-  simulated experiment has a known true effect. Power analysis, CUPED, sample-ratio checks and
-  sequential testing are all checked against it: an A/A test raises false alarms 4.7% of the
-  time at alpha = 5%, peeking pushes that to 20%, and always-valid p-values hold it at 1%.
-- **An honest finding.** The offline paired comparison detects the re-ranker's small gain; a
-  between-user A/B test on the same users cannot. It would need about 9,300 users (4,200 for
-  two-tower vs ALS), and the analysis says "inconclusive" instead of guessing.
-- **Built like production code.** A DVC pipeline with pinned outputs, data contracts,
-  resumable checkpoints, MLflow and W&B tracking, CI with an enforced coverage gate, and a
-  [Streamlit demo](#streamlit-demo) that never loads a model.
+The recommender has two stages. A PyTorch two-tower model picks each user's top 200 videos and a
+LightGBM LambdaRank model re-orders them. On 1,112 test users that I only opened at the very end,
+it gets an NDCG@10 of 0.306. That's 0.017 better than the two-tower model on its own (95% CI
++0.006 to +0.027, paired on the same users) and 0.035 better than ALS.
+
+The A/B testing side covers power analysis, CUPED, sample-ratio checks and sequential testing,
+and every one of them is checked against the known true effect. An A/A test flags 4.7% of
+experiments as significant at alpha = 5%. Peeking at the results ten times pushes that to 20%,
+and always-valid p-values bring it back down to 1%.
+
+The part I find most interesting is where the two disagree. Comparing models offline on the same
+users picks up the re-ranker's small gain easily. A normal A/B test on those same 1,112 users
+can't see it at all. It would need roughly 9,300 users to detect it reliably (4,200 for
+two-tower against ALS), so the test reports "inconclusive", which is the right call.
+
+It all runs as a DVC pipeline with data checks, resumable training, MLflow and W&B tracking and
+CI, and there's a [Streamlit demo](#streamlit-demo) for exploring the results.
 
 ![Three simulated A/B tests against their known true effects: only the large effect is detected](reports/figures/20_ab_readouts.png)
 
-**Contents:** [Quickstart](#quickstart) · [Pipeline](#pipeline) ·
-[EDA](#key-findings-from-the-eda) · [Baselines](#baseline-results-tune-users) ·
-[Two-tower](#two-tower-results-tune-users) ·
-[Two-stage](#two-stage-results-retrieval--re-ranking-tune-users) ·
-[Final results](#final-results-test-users) ·
-[A/B testing](#ab-testing-on-real-reactions-test-users) · [Demo](#streamlit-demo) ·
-[Limitations](#evaluation-design-and-limitations)
+## What's in here
 
-> Status: **all six phases complete**: data pipeline, EDA, debiased labels, evaluation
-> harness, tracked baselines, two-tower neural model, two-stage re-ranking with SHAP, final
-> test evaluation, an A/B testing framework checked against known true effects, and a local
-> [Streamlit demo](#streamlit-demo). See the [roadmap](#roadmap).
-
-## What this project demonstrates
-
-| Area | How | Status |
-|---|---|---|
-| Reproducible data pipeline | DVC stages, checksummed + retrying download, `params.yaml` as single source of truth | Done |
-| Data contracts & quality | pandera schemas, train/eval leakage guard, referential integrity, duplicate audit, summary metrics | Done |
-| Engineering hygiene | `uv` lockfile, ruff (incl. bandit + timezone rules), pytest (80% coverage gate), GitHub Actions CI | Done |
-| Exploratory analysis | [EDA notebook](notebooks/01_eda.ipynb): duration bias, exposure bias, collection windows | Done |
-| Bias-aware labeling | Duration-debiased relevance labels (log-spaced length buckets), fitted on train only, with a residual-bias metric | Done |
-| Evaluation design | Temporal train/valid split; fully observed matrix split by user into tune (selection) and test | Done |
-| Classical recsys | Random, popularity (views vs. engagement with empirical-Bayes smoothing), category affinity, ALS matrix factorisation with grid search | Done |
-| Feature pipeline | Label-free user and video feature tables (profile, categories, length) as their own DVC stage | Done |
-| Deep learning | Two-tower model in PyTorch (CPU or Apple MPS): pointwise vs. in-batch softmax with logQ correction, feature towers that can score unseen videos, multi-seed selection and seed ensembles | Done |
-| Training infrastructure | Atomic, resumable checkpoints (training state every epoch, search progress per scored epoch, `weights_only` loading); trained models versioned as DVC outputs | Done |
-| Learning to rank | Two-stage pipeline: two-tower retrieval, then a LightGBM LambdaRank re-ranker over ~20 features, explained with TreeSHAP | Done |
-| Offline evaluation | Per-user NDCG / precision / recall / MAP@K with bootstrap CIs, paired model comparisons, coverage, Gini, popularity bias; one final evaluation on untouched test users | Done |
-| Experiment tracking | Every run logged to MLflow (local) and Weights & Biases (offline by default), W&B Sweeps config for Bayesian HPO | Done |
-| A/B testing | Power analysis (MDE, sample size with its uncertainty), hash-based assignment checked over 2,000 salts, Welch t-test, CUPED, SRM and covariate-balance checks, guardrail metric, ship rule, A/A tests, peeking and always-valid p-values (mSPRT); every method checked against the true effect over 2,000 re-randomised experiments | Done |
-| Demo | [Streamlit app](#streamlit-demo): leaderboard, user explorer, interactive A/B lab running the pipeline's own statistics; reads precomputed artifacts only and is tested headlessly with Streamlit's `AppTest` | Done |
+- A DVC pipeline with a checksummed, retrying download and every setting in `params.yaml`
+- Data checks with pandera schemas, plus guards against train/eval leakage, broken references
+  and duplicate logs
+- An EDA notebook on duration bias, exposure bias and how the logs were collected
+- Relevance labels corrected for video length
+- Baselines: random, popularity by views and by engagement, category affinity, and ALS with a
+  grid search
+- A two-tower model in PyTorch (pointwise loss against in-batch softmax with logQ correction),
+  with multi-seed selection and seed ensembles
+- Resumable checkpoints for training and for the hyperparameter search
+- A LightGBM LambdaRank re-ranker over 19 features, explained with TreeSHAP
+- Per-user ranking metrics with bootstrap intervals, paired comparisons, coverage and
+  popularity bias
+- Experiment tracking in MLflow and Weights & Biases, with a W&B Sweeps config
+- The A/B framework: power analysis, hash-based assignment, Welch's t-test, CUPED, sample-ratio
+  and balance checks, a guardrail metric, A/A tests, peeking and always-valid p-values
+- A Streamlit app, tested headlessly with Streamlit's `AppTest`
+- uv, ruff, pytest with an 80% coverage gate, and GitHub Actions
 
 ## Quickstart
 
-Requires [uv](https://docs.astral.sh/uv/) (it installs Python 3.12 for you), ~1.5 GB free disk
-and ~5 GB RAM for the `prepare` stage (it peaks at ~4 GB). On macOS, LightGBM needs the OpenMP
-runtime: `brew install libomp`.
+You need [uv](https://docs.astral.sh/uv/), which installs Python 3.12 for you. Budget about
+1.5 GB of disk and 5 GB of RAM (the `prepare` stage peaks around 4 GB). On macOS, LightGBM also
+needs the OpenMP runtime: `brew install libomp`.
 
 ```bash
 git clone https://github.com/njbabani/kuairec-recsys.git && cd kuairec-recsys
-make setup   # create the environment from uv.lock
-make data    # download KuaiRec (432 MB), validate, label and split
-make eda     # re-run the EDA notebook and refresh reports/figures
-make experiments  # model searches, re-ranker, test evaluation, A/B (~30 min on an M4)
+make setup        # create the environment from uv.lock
+make data         # download KuaiRec (432 MB), validate, label and split
+make eda          # re-run the EDA notebook and refresh the figures
+make experiments  # model searches, re-ranker, test evaluation, A/B (about 30 min on an M4)
 make results      # refresh the results notebooks and figures
 make demo-data    # build the demo's tables
 make demo         # open the Streamlit demo at http://localhost:8501
-make test    # run the test suite
+make test         # run the tests
 ```
 
-Run `make` to list every command.
+Run `make` on its own to see every command.
 
 ## Pipeline
 
-The pipeline is defined in [`dvc.yaml`](dvc.yaml); `dvc repro` re-runs only the stages whose
-code, parameters or inputs changed, and `dvc.lock` pins the exact hash of every output.
+The pipeline lives in [`dvc.yaml`](dvc.yaml). `dvc repro` only re-runs the stages whose code,
+parameters or inputs have changed, and `dvc.lock` pins the hash of every output.
 
 ```
 download ──> prepare ──┬──> split ────┬──> als_search        (ALS grid on the tune users)
@@ -114,136 +107,154 @@ download ──> prepare ──┬──> split ────┬──> als_searc
                                                                  └──> demo_data  (demo tables)
 ```
 
-`two_tower_search`, `leaderboard` and `final_evaluation` read both the splits and the features;
-`demo_data` also reads the splits and the video categories.
-`retrieval` scores every pair the later stages need with the saved two-tower models, so
-`reranker` and `final_evaluation` (LightGBM) never load PyTorch: on macOS the two libraries'
-OpenMP runtimes crash when they share a process.
+`two_tower_search`, `leaderboard` and `final_evaluation` read both the splits and the features,
+and `demo_data` also reads the splits and the video categories. The `retrieval` stage scores
+every pair the later stages need with the saved two-tower models. That way `reranker` and
+`final_evaluation`, which use LightGBM, never have to load PyTorch. On macOS the two libraries
+ship clashing OpenMP runtimes and crash if they share a process.
 
-| Stage | Does | Output |
+| Stage | What it does | Output |
 |---|---|---|
-| `download` | Streams `KuaiRec.zip` from Zenodo with retries, verifies its MD5, writes atomically; reuses a verified local copy | `data/raw/KuaiRec.zip` |
-| `prepare` | Cleans and types six tables, checks train/eval leakage and referential integrity, validates schemas | `data/processed/*.parquet`, [`reports/data_summary.json`](reports/data_summary.json) |
-| `split` | Temporal train/valid split, user-hash tune/test split, fits debiased labels on train, labels all splits | `data/splits/{train,valid,tune,test}.parquet`, [`reports/split_summary.json`](reports/split_summary.json) |
-| `features` | User features (profile categories, log counts) and video features (categories, log length); nothing derived from reactions | `data/features/{users,videos}.parquet` |
-| `als_search` | Fits an ALS grid on train, scores it on the tune users, logs every trial | [`reports/metrics/als_search.json`](reports/metrics/als_search.json) |
-| `two_tower_search` | Trains each two-tower configuration once, scores it on tune after every epoch, logs a training curve per configuration | [`reports/metrics/two_tower_search.json`](reports/metrics/two_tower_search.json) |
-| `leaderboard` | Fits every model with its chosen settings, evaluates on the tune users, paired comparisons with engagement popularity and ALS; saves the trained two-tower members | [`reports/metrics/leaderboard.json`](reports/metrics/leaderboard.json), `models/two_tower/` |
-| `retrieval` | Scores every (user, video) pair of the validation week and the tune/test matrices with the saved two-tower ensemble | `data/retrieval/two_tower_scores.parquet` |
-| `reranker` | Trains the LightGBM re-ranker on the validation week (tuned on held-out validation users), evaluates the two-stage pipeline on the tune users, explains it with TreeSHAP | [`reports/metrics/reranker.json`](reports/metrics/reranker.json), `models/reranker/` |
-| `final_evaluation` | Scores every frozen model once on the 1,112 untouched test users, with paired comparisons; writes each policy's 10-video session for every test user | [`reports/metrics/test_evaluation.json`](reports/metrics/test_evaluation.json), `data/ab/sessions.parquet` |
-| `ab_test` | Looks up what each test user did with every policy's session, splits users into arms by hash, runs the power analysis, the planned experiments and the A/A, peeking and logging-bug checks | [`reports/metrics/ab_test.json`](reports/metrics/ab_test.json), `data/ab/user_outcomes.parquet` |
-| `demo_data` | Packs what the Streamlit demo shows: every policy's session per test user with the video's category, length and the user's reaction, and each user's history before the experiment | `data/demo/{sessions,users}.parquet` |
+| `download` | Streams `KuaiRec.zip` from Zenodo with retries, checks its MD5 and writes it atomically, or reuses a verified local copy | `data/raw/KuaiRec.zip` |
+| `prepare` | Cleans and types six tables, checks for train/eval leakage and broken references, and validates the schemas | `data/processed/*.parquet`, [`reports/data_summary.json`](reports/data_summary.json) |
+| `split` | Splits train and validation by time and the fully observed users into tune and test by hash, then fits the debiased labels on train and applies them everywhere | `data/splits/{train,valid,tune,test}.parquet`, [`reports/split_summary.json`](reports/split_summary.json) |
+| `features` | Builds user features (profile categories, log counts) and video features (categories, log length), none of them derived from reactions | `data/features/{users,videos}.parquet` |
+| `als_search` | Fits a grid of ALS models on train, scores each on the tune users and logs every trial | [`reports/metrics/als_search.json`](reports/metrics/als_search.json) |
+| `two_tower_search` | Trains each two-tower configuration, scores it on tune after every epoch and logs a training curve for each | [`reports/metrics/two_tower_search.json`](reports/metrics/two_tower_search.json) |
+| `leaderboard` | Fits every model with its chosen settings, evaluates them on the tune users with paired comparisons, and saves the trained two-tower models | [`reports/metrics/leaderboard.json`](reports/metrics/leaderboard.json), `models/two_tower/` |
+| `retrieval` | Scores every (user, video) pair in the validation week and the tune and test matrices with the saved two-tower ensemble | `data/retrieval/two_tower_scores.parquet` |
+| `reranker` | Trains the LightGBM re-ranker on the validation week, evaluates the two-stage pipeline on the tune users and explains it with TreeSHAP | [`reports/metrics/reranker.json`](reports/metrics/reranker.json), `models/reranker/` |
+| `final_evaluation` | Scores every frozen model once on the 1,112 test users and writes each policy's 10-video session for every one of them | [`reports/metrics/test_evaluation.json`](reports/metrics/test_evaluation.json), `data/ab/sessions.parquet` |
+| `ab_test` | Looks up what each test user did with every session, splits users into arms by hash, and runs the power analysis, the experiments and the A/A, peeking and logging-bug checks | [`reports/metrics/ab_test.json`](reports/metrics/ab_test.json), `data/ab/user_outcomes.parquet` |
+| `demo_data` | Packs what the demo shows: each test user's sessions with the video's category, length and the user's reaction, plus their history before the experiment | `data/demo/{sessions,users}.parquet` |
 
-No DVC remote is configured: the raw data is public, so `dvc repro` rebuilds everything from
-Zenodo, and `dvc.lock` records the hash of every output so any drift shows up in `dvc status`.
+There's no DVC remote. The raw data is public, so `dvc repro` rebuilds everything from Zenodo,
+and since `dvc.lock` records every output's hash, any drift shows up in `dvc status`.
 
-## Key findings from the EDA
+## What the data looks like
 
-Full analysis in [`notebooks/01_eda.ipynb`](notebooks/01_eda.ipynb).
+The full analysis is in [`notebooks/01_eda.ipynb`](notebooks/01_eda.ipynb). Three things shaped
+everything after it.
 
-**1. `watch_ratio` mostly measures how short a video is.** People watch a median of ~7.5
-seconds whatever the video's length, so a naive "watch ratio ≥ 2 = liked" label is positive for
-two thirds of the shortest videos' views and almost none of the longest. A model trained on it
-learns "recommend short videos". Instead, a view is positive when its watch ratio is above the
-80th percentile of *training views of similar-length videos*, using log-spaced length buckets at
-most 15% wide (the duration-bucketing idea of D2Q, Zhan et al., KDD 2022). Measured on 10%-wide
-length slices, the positive rate now stays within roughly 9–25% instead of 0.5–62%; the split
-summary tracks this so a regression shows up.
+### Watch ratio mostly measures how short a video is
+
+People watch a median of about 7.5 seconds no matter how long the video is. So the obvious
+label, "watch ratio of 2 or more means they liked it", is positive for two thirds of views of the
+shortest videos and almost none of the longest. Train on that and the model learns to recommend
+short videos.
+
+Instead, a view counts as positive when its watch ratio beats the 80th percentile of training
+views of videos with a similar length, using log-spaced length buckets no more than 15% wide.
+This is the duration-bucketing idea from D2Q (Zhan et al., KDD 2022). Across 10%-wide slices of
+video length, the positive rate now stays between roughly 9% and 25%, where the naive label
+ranged from 0.5% to 62%. The split summary tracks this, so a regression would show up.
 
 ![Positive rate by video length: naive vs debiased label](reports/figures/03_label_positive_rate_by_length.png)
 
-**2. In the logs, *how often* a video was shown says nothing about its appeal; *how well it was
-received* does.** Per video, logged view counts are uncorrelated with the positive rate when
-everyone sees it, while the logged positive rate is clearly predictive. Phase 2 tests the
-implication: popularity by count should be a weak baseline, popularity by engagement rate a
-strong one.
+### How often a video was shown says little about how good it is
+
+In the logs, how many times a video was shown is uncorrelated with how often users like it when
+everyone sees it. How well it was received in the logs is clearly predictive. That predicts
+popularity by view count will be a weak baseline and popularity by engagement rate a strong one,
+which is what the baselines below show.
 
 ![Logged exposure and engagement vs appeal in the fully observed matrix](reports/figures/05_exposure_vs_preference.png)
 
-**3. The logs come from three collection windows** (Jul 5–12, Aug 1–10, Aug 27–Sep 5), and
-the last 7 days are the validation set. Validation differs from the fully observed test set: it
-has re-watches (13.7% of views) and videos never seen in training (12.5%), the test set has
-neither. So validation is used for training-time checks, and model selection uses a held-out
-set of fully observed users instead.
+### The logs come from three separate windows
+
+They cover July 5–12, August 1–10 and August 27 to September 5, and the last 7 days are the
+validation set. Validation doesn't look like the fully observed test set. It has re-watches
+(13.7% of views) and videos never seen in training (12.5%), and the test set has neither. So I
+use validation for checks during training, and choose models on a held-out group of fully
+observed users instead.
 
 ![Daily views with the validation window](reports/figures/06_daily_views_and_split.png)
 
-## Baseline results (tune users)
+## Baselines
 
-Details and charts in [`notebooks/02_baselines.ipynb`](notebooks/02_baselines.ipynb). Each model
-ranks every candidate video for each of the 299 tune users; metrics are per user, then averaged.
-These are **selection-set scores**: the same users chose ALS's hyperparameters (see below for
-the correction); final numbers come from the untouched test users
-([final results](#final-results-test-users)).
+Charts and details are in [`notebooks/02_baselines.ipynb`](notebooks/02_baselines.ipynb). Each
+model ranks every candidate video for each of the 299 tune users, and metrics are computed per
+user and then averaged. These users also chose ALS's hyperparameters, so these numbers are a
+little flattering (more on that below). The real numbers come from the
+[test users](#final-results-on-the-test-users).
 
 | Model | NDCG@10 [95% CI] | Coverage@10 | Popularity of recommendations |
 |---|---|---|---|
 | random | 0.164 [0.143, 0.185] | 59% | 50th percentile |
 | popularity by views | 0.184 [0.162, 0.206] | 0.3% | 100th percentile |
 | popularity by engagement | 0.217 [0.195, 0.240] | 0.3% | 66th percentile |
-| **ALS (tuned)** | **0.274** [0.246, 0.302] | 22% | 81st percentile |
+| ALS (tuned) | 0.274 [0.246, 0.302] | 22% | 81st percentile |
 
-- **The EDA hypothesis holds:** ranking by view count barely beats random, ranking by engagement
-  rate is the strongest non-personalized baseline.
-- **Paired comparisons are the right test.** Separate intervals for ALS and engagement
-  popularity overlap, but on the same users ALS is better by **+0.057 NDCG@10
-  [+0.031, +0.083]**: pairing removes each user's own base rate, the biggest source of variance
-  (the same idea behind paired designs in A/B tests). The gain is uneven: ALS wins for 57% of
-  users. Intervals cover user sampling only, not seeds or the choice of candidate videos.
-- **Winner's curse, corrected.** ALS's settings were picked from 36 trials on these same users.
-  A bootstrap over users (pick the best trial in-sample, score it on the users left out)
-  estimates **0.015 NDCG@10** of selection optimism, so ~0.259 is the fairer expectation for new
-  users, still well above every popularity baseline.
-- **Accuracy vs. popularity bias.** Across the ALS trials, the more accurate settings recommend
-  more popular videos; the chosen one draws its top 10 from around the 81st popularity
-  percentile. The top settings are within 0.001 of each other (a flat plateau).
-- **What the evaluation actually tests.** Tune users have *no* training views of the 3,327
-  candidate videos, so ALS must transfer taste learned from their other videos (median ~33
-  positive views) to new ones. ALS uses Hu et al.'s confidence `1 + alpha·count`; users with no
-  positive training views fall back to the average user vector.
+The EDA prediction holds up. Ranking by view count barely beats random, and ranking by
+engagement rate is the best of the non-personalised baselines.
+
+The intervals for ALS and engagement popularity overlap, but that's misleading. On the same
+users ALS is better by 0.057 NDCG@10 (CI +0.031 to +0.083). Pairing removes each user's own base
+rate, which is the biggest source of noise, the same reason paired designs work well in A/B
+tests. The gain isn't spread evenly, though: ALS does better for 57% of users. These intervals
+only cover the sampling of users, not random seeds or the choice of candidate videos.
+
+ALS's settings were picked from 36 trials on these same users, so its score is optimistic. A
+bootstrap over users (pick the best trial on part of the users, score it on the rest) puts that
+optimism at 0.015 NDCG@10, so about 0.259 is a fairer expectation for new users. That's still
+well ahead of every popularity baseline.
+
+Across the ALS trials, the more accurate settings also recommend more popular videos. The chosen
+one draws its top 10 from around the 81st popularity percentile. The best settings are all within
+0.001 of each other, so there's a flat plateau at the top.
+
+It's worth being clear about what this evaluation tests. Tune users have no training views of
+any of the 3,327 candidate videos, so ALS has to carry over taste learned from their other
+videos (a median of about 33 positive views each). ALS uses Hu et al.'s confidence weighting
+`1 + alpha·count`, and users with no positive training views fall back to the average user
+vector.
 
 ![Paired comparison with the strongest popularity baseline](reports/figures/09_baselines_paired_comparison.png)
 
 ![ALS trials: accuracy vs popularity of recommendations](reports/figures/10_als_accuracy_vs_popularity.png)
 
-## Two-tower results (tune users)
+## Two-tower model
 
-Details and charts in [`notebooks/03_two_tower.ipynb`](notebooks/03_two_tower.ipynb). Same users
-and protocol as above; ALS and the two-tower model were both tuned on these users.
+Details are in [`notebooks/03_two_tower.ipynb`](notebooks/03_two_tower.ipynb). It uses the same
+users and protocol as above, and both ALS and the two-tower model were tuned on these users.
 
 | Model | NDCG@10 [95% CI] | Recall@50 | Coverage@10 | Popularity of recommendations |
 |---|---|---|---|---|
 | category affinity | 0.199 [0.175, 0.223] | 0.020 | 6% | 59th percentile |
 | ALS (tuned) | 0.274 [0.246, 0.302] | 0.030 | 22% | 81st percentile |
-| **two-tower (3-seed ensemble)** | **0.298** [0.271, 0.325] | **0.035** | 11% | **49th percentile** |
+| two-tower (3-seed ensemble) | 0.298 [0.271, 0.325] | 0.035 | 11% | 49th percentile |
 
-- **The objective matters more than the architecture.** The pointwise loss (*will this user like
-  this video, given it was shown?*) beats the in-batch softmax with logQ correction (*which
-  video did they like?*) in every configuration: 0.287 vs 0.252 seed-averaged. The pointwise loss
-  asks the same question as the evaluation and also learns from views that were not positive.
-  (With the same epochs, the softmax loss gets ~5x fewer updates, so this compares the two as
-  configured here.)
-- **One training run is a noisy measurement.** The first search picked a single-seed peak of
-  0.294 that retrained to 0.278. Across seeds a single run varies by ±0.003–0.006, as much as
-  the gaps being compared, so the search now trains every configuration with 3 seeds and
-  selects on the average (best: 0.287 ± 0.003, 0.277 after selection optimism of 0.010).
-  On CPU, training is deterministic: the leaderboard's retrained members match the search to
-  every digit.
-- **Against ALS, on the same users:** the ensemble gains **+0.024 NDCG@10 [−0.000, +0.048]**
-  and ranks better for 56% of users. That is borderline on the tune users; the untouched test
-  users settle it (+0.017 [+0.005, +0.029]). Against engagement popularity the gain is clear:
-  **+0.081 [+0.058, +0.103]**, better for 67% of users.
-- **Accurate without leaning on popularity.** The two-tower model's top 10 sits at the 49th
-  popularity percentile (random is 50th) versus the 81st for ALS, and it has the best
-  recall@50.
-- **Category taste alone does not help.** Re-weighting engagement popularity by each user's
-  per-category lift *lowers* NDCG@10 (−0.018 [−0.034, −0.002]): first-level categories are too
-  coarse to describe taste, and the lifts add noise. Personalisation needs finer signals (ids,
-  embeddings).
-- **Overfitting is real and fast.** Every configuration peaks around epochs 5–7 and then
-  declines (the 64-dimensional pointwise model falls from 0.285 at epoch 5 to 0.260 at epoch
-  10, seed-averaged), which is why every epoch is scored.
+The choice of loss mattered more than anything about the architecture. A pointwise loss ("will
+this user like this video, given it was shown?") beat in-batch softmax with logQ correction
+("which video did they like?") in every configuration, 0.287 against 0.252 averaged over seeds.
+The pointwise loss asks the same question the evaluation does, and it also learns from views that
+weren't positive. With the same number of epochs, though, softmax gets about five times fewer
+updates, so this compares the two as I configured them rather than at their best.
+
+A single training run turned out to be a noisy measurement. My first search picked a single-seed
+peak of 0.294, which retrained to 0.278. One run varies by 0.003 to 0.006 between seeds, as much
+as the gaps I was comparing. So the search now trains every configuration with three seeds and
+picks on the average. The best scores 0.287 ± 0.003, or 0.277 after accounting for 0.010 of
+selection optimism. Training on CPU is deterministic, so the leaderboard's retrained models match
+the search to every digit.
+
+Against ALS on the same users, the ensemble gains 0.024 NDCG@10 (CI −0.000 to +0.048) and does
+better for 56% of users. That's borderline here, and the test users settle it later (+0.017, CI
++0.005 to +0.029). Against engagement popularity the gain is clear: +0.081 (CI +0.058 to +0.103),
+better for 67% of users.
+
+It's accurate without leaning on popular videos. The two-tower model's top 10 sits at the 49th
+popularity percentile, about where random lands, against the 81st for ALS, and it has the best
+recall@50.
+
+Taste by category alone doesn't help. Re-weighting engagement popularity by each user's
+per-category lift actually lowers NDCG@10 (−0.018, CI −0.034 to −0.002). First-level categories
+are too coarse to describe taste and the lifts mostly add noise, so personalisation needs finer
+signals like ids and embeddings.
+
+Overfitting kicks in quickly. Every configuration peaks around epochs 5 to 7 and then declines.
+The 64-dimensional pointwise model drops from 0.285 at epoch 5 to 0.260 at epoch 10 (averaged
+over seeds), which is why the search scores every epoch.
 
 ![Leaderboard](reports/figures/11_leaderboard.png)
 
@@ -251,64 +262,72 @@ and protocol as above; ALS and the two-tower model were both tuned on these user
 
 ![Accuracy vs popularity of recommendations, every model](reports/figures/14_accuracy_vs_popularity.png)
 
-## Two-stage results: retrieval + re-ranking (tune users)
+## Re-ranking
 
-Details and charts in [`notebooks/04_reranker.ipynb`](notebooks/04_reranker.ipynb). Stage 1 (the
-two-tower ensemble) keeps each user's top 200 of ~3,300 candidates; stage 2, a LightGBM
-LambdaRank model over 19 features, re-orders them. The re-ranker learns from the validation week
-(logged views from Aug 30, one per pair, every feature computed from data before it) of 4,248
-users outside the fully observed matrix; 533 more stop its boosting and pick its configuration,
-and 497 are kept only for reporting. The 1,411 tune and test users play no part in training it.
+Details are in [`notebooks/04_reranker.ipynb`](notebooks/04_reranker.ipynb). The first stage (the
+two-tower ensemble) keeps each user's top 200 of about 3,300 candidates, and the second, a
+LightGBM LambdaRank model over 19 features, re-orders them.
+
+The re-ranker learns from the validation week: logged views from August 30 onwards, one per
+pair, with every feature computed from data before that date. It trains on 4,248 users from
+outside the fully observed matrix. Another 533 decide when to stop boosting and which
+configuration to keep, and 497 are held back purely for reporting. The 1,411 tune and test users
+play no part in training it.
 
 | Model | NDCG@10 [95% CI] | Recall@50 | Popularity of recommendations |
 |---|---|---|---|
 | ALS | 0.274 [0.246, 0.302] | 0.030 | 81st percentile |
-| two-stage (two-tower + re-ranker) | 0.293 [0.267, 0.318] | **0.036** | 56th percentile |
-| two-tower alone | **0.298** [0.271, 0.325] | 0.035 | 49th percentile |
+| two-stage (two-tower + re-ranker) | 0.293 [0.267, 0.318] | 0.036 | 56th percentile |
+| two-tower alone | 0.298 [0.271, 0.325] | 0.035 | 49th percentile |
 
-Each comparison below is paired on the same users, against ordering by the two-tower score:
+Each row below is a paired comparison against ordering by the two-tower score:
 
 | Where | Δ NDCG@10 [95% CI] | Better for |
 |---|---|---|
-| untouched validation users (logged views) | **+0.043** [+0.026, +0.061] | 61% of users |
+| held-out validation users (logged views) | +0.043 [+0.026, +0.061] | 61% of users |
 | tune users, top-200 shortlist re-ranked | −0.005 [−0.023, +0.014] | 48% |
-| tune users, every candidate re-ranked | **−0.040** [−0.060, −0.018] | 42% |
-| tune users, re-ranker cross-fitted on other tune users (upper bound) | +0.002 [−0.019, +0.024] | 48% |
+| tune users, every candidate re-ranked | −0.040 [−0.060, −0.018] | 42% |
+| tune users, re-ranker cross-fitted on other tune users | +0.002 [−0.019, +0.024] | 48% |
 
-- **A clear gain on logged data, a smaller one on real preferences.** On validation users it
-  never saw, the re-ranker beats two-tower ordering by +0.043. The 299 tune users show no
-  detectable gain, but the 1,112 untouched test users, opened once at the end, do: **+0.017
-  [+0.006, +0.027]** ([final results](#final-results-test-users)). *Correction:* this section
-  first read the tune result as "no gain on real preferences". That comparison was too small,
-  and it favoured the two-tower model, which was selected on those same users.
-- **Part of the logged-data gain does not carry over.** The gain on logged views (+0.043) is
-  larger than on the fully observed test users (+0.017): some of what the ranker learns is
-  specific to the logged feed. Cross-fitting it on the fully observed shortlists of other tune
-  users (a diagnostic only) gives +0.002 [−0.019, +0.024], an interval too wide to separate
-  "no gain" from the test gain.
-- **The shortlist protects the re-ranker.** Asked to order all ~3,300 candidates, including a
-  long tail unlike the views it learned from, it does clearly worse (−0.040). Retrieval keeps it
-  on familiar ground, which is one practical reason two-stage systems shortlist first.
-- **What reorders a user's list (TreeSHAP, centred within each user):** engagement popularity
-  first, then video length (shorter videos move up: both the validation week and the fully
-  observed users like short videos slightly more often, as the labels are length-neutral only on
-  the training weeks), the two-tower and ALS scores, and video age. Platform-wide like, share
-  and comment rates matter little.
-- **Retrieval is the ceiling.** The top 200 hold 11% of a tune user's liked videos on average;
-  a perfect shortlist would hold 58% (most users like more than 200 of the candidates, so not
-  all of their liked videos fit).
-- **Fairness.** ALS and the two-tower model were tuned on the tune users and the re-ranker was
-  not, which favours them slightly; a single two-tower run also varies by ±0.006. The untouched
-  test users give the final comparison, below.
+On validation users it never saw, the re-ranker beats two-tower ordering by 0.043. On the 299
+tune users there's no detectable gain. When I first wrote this section from the tune users
+alone, I concluded the re-ranker didn't help with real preferences. That turned out to be wrong.
+The 1,112 test users, opened once at the end, do show a gain of 0.017 (CI +0.006 to +0.027, see
+the [final results](#final-results-on-the-test-users)). The tune comparison was too small, and it
+favoured the two-tower model, which had been selected on those same users.
+
+Still, only part of the gain on logged data carries over. The re-ranker gains 0.043 on logged
+views but 0.017 on fully observed users, so some of what it learns is specific to the logged
+feed. Cross-fitting it on the shortlists of other tune users gives +0.002 (CI −0.019 to +0.024),
+an interval too wide to tell "no gain" apart from the test result.
+
+The shortlist also protects it. Asked to order all 3,300 candidates, including a long tail that
+looks nothing like the views it learned from, the re-ranker does clearly worse (−0.040).
+Retrieval keeps it on familiar ground, which is one practical reason two-stage systems shortlist
+first.
+
+TreeSHAP, centred within each user, shows what moves videos around a user's list. Engagement
+popularity comes first, then video length, then the two-tower and ALS scores, then video age.
+Shorter videos move up, because both the validation week and the fully observed users like short
+videos slightly more often (the labels are only length-neutral on the training weeks).
+Platform-wide like, share and comment rates barely matter.
+
+Retrieval sets the ceiling. The top 200 hold 11% of a tune user's liked videos on average, and a
+perfect shortlist would hold 58% (most users like more than 200 of the candidates, so not all of
+them fit).
+
+One caveat on fairness: ALS and the two-tower model were tuned on the tune users and the
+re-ranker wasn't, which tilts this comparison slightly towards them. A single two-tower run also
+varies by about 0.006. The test users give the fair comparison below.
 
 ![Re-ranking gains: logged vs fully observed users](reports/figures/15_two_stage_paired.png)
 
 ![What reorders a user's shortlist (within-user TreeSHAP)](reports/figures/18_reranker_shap_beeswarm.png)
 
-## Final results (test users)
+## Final results on the test users
 
-The 1,112 test users were opened once, after every model was frozen. The protocol is the same
-as above (each model ranks all 3,327 candidate videos for each user). Details in
+I opened the 1,112 test users once, after every model was frozen. The protocol is the same as
+before, with each model ranking all 3,327 candidate videos for each user. Details are in
 [`notebooks/05_ab_testing.ipynb`](notebooks/05_ab_testing.ipynb).
 
 | Model | NDCG@10 [95% CI] | Recall@50 | Coverage@10 | Popularity of recommendations |
@@ -316,167 +335,161 @@ as above (each model ranks all 3,327 candidate videos for each user). Details in
 | random | 0.149 [0.139, 0.159] | 0.015 | 97% | 50th percentile |
 | popularity by engagement | 0.208 [0.196, 0.220] | 0.026 | 0.4% | 65th percentile |
 | ALS | 0.271 [0.256, 0.286] | 0.036 | 35% | 81st percentile |
-| two-tower (3-seed ensemble) | 0.288 [0.274, 0.303] | **0.043** | 16% | 49th percentile |
-| **two-stage (two-tower + re-ranker)** | **0.306** [0.290, 0.320] | 0.042 | 13% | 56th percentile |
+| two-tower (3-seed ensemble) | 0.288 [0.274, 0.303] | 0.043 | 16% | 49th percentile |
+| two-stage (two-tower + re-ranker) | 0.306 [0.290, 0.320] | 0.042 | 13% | 56th percentile |
 
 | Paired on the same users | Δ NDCG@10 [95% CI] | Better for |
 |---|---|---|
-| two-stage vs two-tower | **+0.017** [+0.006, +0.027] | 52% of users |
-| two-tower vs ALS | **+0.017** [+0.005, +0.029] | 54% |
-| ALS vs engagement popularity | **+0.063** [+0.050, +0.076] | 58% |
+| two-stage vs two-tower | +0.017 [+0.006, +0.027] | 52% of users |
+| two-tower vs ALS | +0.017 [+0.005, +0.029] | 54% |
+| ALS vs engagement popularity | +0.063 [+0.050, +0.076] | 58% |
 
-- **The test users settle both close calls.** The two-tower model beats ALS (borderline on the
-  tune users), and re-ranking its shortlist adds a real gain (none was detectable on the tune
-  users; see the correction above).
-- **Small, real, uneven gains.** Each step up is worth about +0.017 NDCG@10 and helps only
-  slightly more users than it hurts (52–54%). Paired comparisons are what make gains this small
-  detectable on 1,112 users.
-- **Compare models on the same users, not scores across user sets.** Every model except the
-  two-stage pipeline scores lower on test than on tune, even random (0.164 → 0.149), because the
-  test users like fewer of the candidates (15.2% against 16.2%). Score levels move with the users; paired differences
-  on the same users do not.
-- **Accurate without leaning on popularity.** The two neural pipelines recommend around the
-  49th–56th popularity percentile, ALS around the 81st.
+The test users settle both of the close calls from earlier. The two-tower model beats ALS, and
+re-ranking its shortlist adds a real gain. Each step up is worth about 0.017 NDCG@10 and helps
+only slightly more users than it hurts (52–54%). Gains that small only show up because the
+comparison is paired.
+
+It's better to compare models on the same users than to compare scores across user groups. Every
+model except the two-stage pipeline scores lower on test than on tune, even random (0.164 down to
+0.149), simply because the test users like fewer of the candidates (15.2% against 16.2%). Score
+levels move with the users. Paired differences on the same users don't.
+
+The two neural pipelines also stay away from popularity, recommending around the 49th to 56th
+popularity percentile against the 81st for ALS.
 
 ![Final test leaderboard](reports/figures/19_test_leaderboard.png)
 
-## A/B testing on real reactions (test users)
+## A/B testing
 
-Details in [`notebooks/05_ab_testing.ipynb`](notebooks/05_ab_testing.ipynb), which explains each
-idea from scratch.
+The details, with each idea explained from scratch, are in
+[`notebooks/05_ab_testing.ipynb`](notebooks/05_ab_testing.ipynb).
 
-**The setup.** An A/B test splits users at random. Control sees the current recommender,
-treatment sees the new one, and the difference in a metric between the groups estimates the new
-one's effect. Here each policy builds a 10-video session for every test user (its top 10). The
-matrix is fully observed, so we know what every user would have done with *every* policy's
-session:
+In an A/B test you split users at random. Control gets the current recommender, treatment gets
+the new one, and the difference in some metric between the two groups estimates the new one's
+effect. Here each policy builds a 10-video session for every test user (its top 10), and because
+the matrix is fully observed I can look up what every user would have done with every policy's
+session. The main metric is how many of those videos they liked. Seconds watched is a guardrail,
+something a launch shouldn't make worse. Users are assigned by a salted hash of their id, which
+put 534 in control and 578 in treatment.
 
-- **Primary metric:** videos liked per session.
-- **Guardrail:** seconds watched per session (a launch must not hurt it).
-- **Assignment:** a salted hash of the user id splits users about 50/50 (534 control, 578
-  treatment), and the same user always lands in the same arm.
-
-The analysis sees only each user's assigned arm, as in a real test. Because both outcomes are
-known, the **true effect** is known too: the average over all 1,112 users of treatment minus
-control. Each method is checked against it by re-randomising the split 2,000 times.
+The analysis only sees each user's own arm, as a real test would. But both outcomes are known, so
+the true effect is known too (the average over all 1,112 users of treatment minus control), and I
+check every method against it by re-randomising the split 2,000 times.
 
 | Policy | random | popularity | ALS | two-tower | two-stage |
 |---|---|---|---|---|---|
 | Videos liked per session (all test users) | 1.48 | 2.07 | 2.65 | 2.85 | 3.00 |
 
-**1. Power analysis, before running anything.** Per user, videos liked varies with a standard
-deviation of 2.37. With 534 and 578 users, the smallest effect the test detects 80% of the time
-(the *minimum detectable effect*, MDE) is **0.40 liked videos per session**, 15% of ALS's 2.65.
-CUPED (below) lowers it to 0.31.
+### Power analysis
 
-**2. Three planned experiments.**
+Videos liked varies a lot from user to user, with a standard deviation of 2.37. With 534 and 578
+users, the smallest effect the test catches 80% of the time (the minimum detectable effect, or
+MDE) is 0.40 liked videos per session, about 15% of what ALS gets. CUPED brings that down to 0.31.
 
-| Experiment (control → treatment) | True effect | Estimate [95% CI] | With CUPED | Decision | Power (plain / CUPED) | Users for 80% power (both arms) |
+### Three experiments
+
+| Experiment (control → treatment) | True effect | Estimate [95% CI] | With CUPED | Decision | Power (plain / CUPED) | Users for 80% power |
 |---|---|---|---|---|---|---|
 | popularity → ALS | +0.58 | +0.39 [+0.14, +0.64] | +0.46 [+0.27, +0.65] | ship | 99.9% / 100% | 427 (295–675) |
 | ALS → two-tower | +0.21 | −0.02 [−0.30, +0.26] | +0.05 [−0.18, +0.27] | inconclusive | 30% / 43% | 4,216 (1,778–19,906) |
 | two-tower → two-stage | +0.14 | −0.11 [−0.40, +0.18] | −0.04 [−0.26, +0.19] | inconclusive | 15% / 20% | 9,253 (3,248–94,975) |
 
-*Power* is the share of the 2,000 re-randomised experiments that detect the true effect. The
-users needed are for the plain test (no CUPED), with each arm's own spread. The range in
-brackets covers the 95% interval of the effect *new* users could show: these users pin it down
-only so far. The decision uses the CUPED estimate, the guardrail and the sample-ratio check.
+Power is the share of the 2,000 re-randomised experiments that detect the true effect. The user
+counts cover both arms, use the plain test without CUPED, and allow each arm its own spread. The
+range in brackets covers the 95% interval of the effect a new set of users might show, since
+these users only pin it down so far. The decision uses the CUPED estimate, the guardrail and the
+sample-ratio check.
 
-- **Only the large effect is detected, and that is the right answer.** Both newer models really
-  are better (+0.21 and +0.14 liked videos per session), but both effects are below the MDE.
-  "Inconclusive" means *not enough evidence*, not *no effect*. Detecting them reliably would
-  take about 4,200 and 9,300 users, and planning is less certain than one number suggests:
-  for the smallest effect anywhere from 3,200 to 95,000.
-- **Why offline evaluation sees what this A/B test cannot.** The offline comparison scores every
-  model on the *same* users, so each user's own appetite for liking videos cancels out. An A/B
-  test compares *different* users, and their liked counts vary far more than the effects being
-  measured. That is why teams screen ideas offline (or with interleaving) and spend A/B traffic
-  on the decisions that need it.
-- **CUPED cuts variance by 35–44%**, as if there were 1.5–1.8× more users. It subtracts the part
-  of each user's outcome predicted by their behaviour *before* the experiment (their positive
-  rate in the training weeks, correlation about 0.6 with liked videos). That behaviour cannot have
-  been changed by the treatment, so the estimate stays unbiased: across re-randomisations its
-  average matches the truth to within 0.003.
-- **The guardrail only catches harms large enough to see.** Compared with popularity, ALS
-  really lowers watch time by 1.2 s per session. The test cannot see a change that small
-  (−3.0 s [−9.9, +3.8]), so the experiment ships.
+Only the big effect gets detected, and that's what should happen. Both newer models really are
+better, by 0.21 and 0.14 liked videos per session, but both effects are below the MDE, so the
+test says "inconclusive". That means there isn't enough evidence, which is different from there
+being no effect. Detecting them reliably would take about 4,200 and 9,300 users, and even those
+figures are uncertain. For the smaller effect, anywhere from 3,200 to 95,000 users is plausible.
 
-**3. Checking the machinery.**
+The offline comparison sees these gains because it scores every model on the same users, so each
+person's general appetite for liking things cancels out. An A/B test compares different people,
+and people vary far more than the effects being measured. That's why it makes sense to screen
+ideas offline (or with interleaving) and save A/B traffic for the decisions that need it.
 
-- **A/A test.** The two-tower model is compared with itself over 2,000 random splits. 4.65% of
-  the splits come out "significant" (4.75% with CUPED), matching the 5% false-alarm rate the test
-  promises, and the p-values are spread evenly.
-- **Is the hash fair?** The simulations flip a coin per user, but the real split is a hash. The
-  same A/A comparison split by 2,000 other salts gives 5.3% false alarms, 4.2% pre-experiment
-  imbalance in the covariate and 5.3% sample-ratio alarms, all close to the 5% a fair coin
-  gives. The salt actually used splits 534/578 (SRM p = 0.19) with balanced covariates (p = 0.41).
-- **Interval coverage.** The 95% intervals contain the true effect 96–99% of the time. This is
-  slightly conservative, as expected when the users are fixed and only the assignment is random.
-- **Peeking.** Checking after every tenth of the users and stopping at the first p < 0.05
-  raises false alarms from 5% to **20%**. Always-valid p-values (mSPRT) may be checked at every
-  look and keep them below 5% (1% here: the guarantee is conservative). The price is power: for
-  the real ALS → two-tower effect it falls from 28% (one look at the end) to 8%, partly because
-  the test was tuned to effects the size of the MDE (0.40), about twice this one.
-- **Sample ratio mismatch (SRM).** A simulated logging bug: the new version only logs a session
-  once something is liked, so the least engaged treatment users vanish. Both arms run the same
-  policy, so any lift is fake. The analysis is the full pipeline (CUPED, SRM check, decision);
-  CUPED cannot undo this bias, because users are lost for how they reacted *during* the
-  experiment.
+CUPED cuts the variance by 35–44%, which is like having 1.5 to 1.8 times as many users. It
+subtracts the part of each user's outcome that their behaviour before the experiment already
+predicts, here their positive rate in the training weeks, which correlates about 0.6 with videos
+liked. The treatment can't have changed that earlier behaviour, so the estimate stays unbiased.
+Across the re-randomisations its average lands within 0.003 of the truth.
 
-  | Treatment users lost | Estimate (CUPED) [95% CI] | SRM p-value | Decision |
-  |---|---|---|---|
-  | none | −0.16 [−0.39, +0.07] | 0.19 | inconclusive |
-  | 5% (29) | −0.08 [−0.31, +0.16] | 0.65 | inconclusive |
-  | 10% (58) | +0.02 [−0.22, +0.25] | 0.67 | inconclusive |
-  | 20% (116) | +0.24 [−0.01, +0.49] | 0.02 | inconclusive |
-  | 30% (173) | +0.47 [+0.22, +0.73] | 0.00003 | **invalid: sample ratio mismatch** |
+The guardrail only catches harms big enough to see. Compared with popularity, ALS really does
+lower watch time, by 1.2 seconds per session. The test can't detect a change that small (−3.0 s,
+CI −9.9 to +3.8), so the experiment ships anyway.
 
-  At 30% the bug fakes a significant lift (+0.63 over the bug-free estimate, p = 0.0003) and the
-  SRM check rightly blocks it. Smaller losses fake smaller lifts and slip through: the hash had
-  already given treatment 44 extra users, so losing 58 of them brings the arms *closer* to 50/50.
-  An SRM check is a test with limited power, so a p-value below 0.05 deserves a look even when
-  it is above the strict 0.001 alarm level.
+### Checking the machinery
 
-![Experiment readouts against the true effects](reports/figures/20_ab_readouts.png)
+For an A/A test I compared the two-tower model with itself over 2,000 random splits. 4.65% of
+them came out significant (4.75% with CUPED), which matches the 5% the test promises, and the
+p-values are spread evenly.
+
+The simulations flip a coin for each user, but the real split uses a hash, so I checked the hash
+as well. Splitting the same A/A comparison with 2,000 other salts gives 5.3% false alarms, 4.2%
+imbalance in the pre-experiment covariate and 5.3% sample-ratio alarms, all close to what a fair
+coin would give. The salt I actually use splits users 534/578 (sample-ratio p = 0.19), with
+balanced covariates (p = 0.41).
+
+The 95% intervals contain the true effect 96–99% of the time. That's slightly conservative,
+which is expected when the users are fixed and only the assignment is random.
+
+Peeking is where things go wrong. Check after every tenth of the users, stop at the first
+p < 0.05, and false alarms jump from 5% to 20%. Always-valid p-values (mSPRT) can be checked at
+every look and stay under 5%, at 1% here because the guarantee is conservative. The cost is
+power. For the real ALS → two-tower effect it falls from 28% with one look at the end to 8%,
+partly because the test is tuned to effects the size of the MDE (0.40), about twice as big as
+this one.
+
+The last check is a fake logging bug. Imagine the new version only logs a session once something
+gets liked, so the least engaged treatment users vanish from the data. Both arms run the same
+policy here, so any lift is fake. Each case goes through the full analysis (CUPED, then the
+sample-ratio check, then the decision). CUPED can't undo this bias, because users disappear
+because of how they reacted during the experiment.
+
+| Treatment users lost | Estimate (CUPED) [95% CI] | Sample-ratio p-value | Decision |
+|---|---|---|---|
+| none | −0.16 [−0.39, +0.07] | 0.19 | inconclusive |
+| 5% (29) | −0.08 [−0.31, +0.16] | 0.65 | inconclusive |
+| 10% (58) | +0.02 [−0.22, +0.25] | 0.67 | inconclusive |
+| 20% (116) | +0.24 [−0.01, +0.49] | 0.02 | inconclusive |
+| 30% (173) | +0.47 [+0.22, +0.73] | 0.00003 | invalid: sample ratio mismatch |
+
+At 30% the bug fakes a significant lift, 0.63 above the bug-free estimate (p = 0.0003), and the
+sample-ratio check blocks it. Smaller losses fake smaller lifts and get through. The hash had
+already given treatment 44 extra users, so losing 58 of them actually brings the arms closer to
+50/50. A sample-ratio check is a test with limited power too, so a p-value under 0.05 is worth a
+look even when it's above the strict 0.001 alarm.
 
 ![A/A p-values and power](reports/figures/21_aa_and_power.png)
 
-![Peeking inflates false alarms; always-valid p-values do not](reports/figures/22_peeking.png)
+![Peeking inflates false alarms, always-valid p-values do not](reports/figures/22_peeking.png)
 
-![A logging bug fakes a lift; the SRM check catches only the large loss](reports/figures/23_srm_demo.png)
+![A logging bug fakes a lift, and the sample-ratio check only catches the large loss](reports/figures/23_srm_demo.png)
 
 ## Streamlit demo
 
-A local app for exploring the results, run with `make demo` (after `make demo-data`) at
-http://localhost:8501:
+There's a small app for exploring the results. Build its data with `make demo-data`, then run
+`make demo` and open http://localhost:8501.
 
-- **Leaderboard**: the final test scores with their intervals, and paired comparisons against
-  any reference model.
-- **User explorer**: pick a test user and see the 10 videos each model recommended, with what
-  the user actually did with each (liked, seconds watched), next to their history before the
-  experiment.
-- **A/B lab**: choose control, treatment, split and significance level, then
-  - **run** an experiment, with plain and CUPED estimates drawn against the true effect, and the
-    sample-ratio, balance and guardrail checks behind the decision;
-  - **plan** its size, seeing how the smallest detectable effect falls with more users;
-  - **repeat** it thousands of times for power (or false alarms), bias and coverage;
-  - **peek** at it as users arrive, naively or with always-valid p-values;
-  - **break the logging**, losing the least engaged treatment users, and watch the fake lift and
-    the sample-ratio check.
+The leaderboard page shows the final test scores with their intervals, plus paired comparisons
+against whichever model you pick. The user explorer lets you choose a test user and see the 10
+videos each model recommended, what the user actually did with each one, and their history
+before the experiment. The A/B lab is the main part. You pick control, treatment, the split and
+the significance level, then you can run a single experiment against the true effect, plan how
+many users you'd need, repeat it thousands of times to see power, bias and coverage, peek at it
+as users arrive, or break the logging and watch the fake lift appear.
 
-How it is built:
-
-- **No models in the app.** It reads only precomputed artifacts: the git-tracked reports, the
-  per-user A/B outcomes and two small tables from the `demo_data` stage (about 400 KB). It never
-  loads PyTorch or LightGBM, and it starts in seconds.
-- **The pipeline's own statistics.** The lab calls the same functions as the `ab_test` stage
-  (`recsys.abtest`); a test checks that it reproduces the stage's readout exactly.
-- **Works on a fresh clone.** With only the git-tracked reports, the overview and leaderboard
-  work and the other pages say which `make` command builds their data.
-- **Tested end to end.** Every page runs headlessly in Streamlit's `AppTest`, on a synthetic
-  project built by the real `ab_test` and `demo_data` stages and on a reports-only clone.
-- **Caching** is keyed on each file's modification time, so a pipeline re-run shows up without
-  restarting the app. Streamlit's usage statistics are switched off in `.streamlit/config.toml`.
+The app doesn't load any models. It only reads the reports in git, the per-user A/B outcomes and
+two small tables (about 400 KB) from the `demo_data` stage, so it starts in a few seconds and
+never touches PyTorch or LightGBM. The lab calls the same statistics code as the `ab_test` stage,
+and a test checks that it reproduces the stage's numbers exactly. On a fresh clone without any
+data, the overview and leaderboard still work and the other pages tell you which `make` command
+to run. Every page is tested headlessly with Streamlit's `AppTest`. Caches are keyed on each
+file's modification time, so re-running the pipeline shows up without restarting the app.
+Streamlit's usage statistics are switched off in `.streamlit/config.toml`.
 
 ![The A/B lab: one experiment against the true effect](reports/figures/demo_ab_lab_run.jpg)
 
@@ -486,155 +499,144 @@ How it is built:
 
 ## Experiment tracking
 
-Every training run is logged to both trackers through one small interface
-([`tracking.py`](src/recsys/tracking.py)):
+Every training run goes to both MLflow and Weights & Biases through one small interface in
+[`tracking.py`](src/recsys/tracking.py). MLflow runs locally against `mlflow.db`, so run
+`make mlflow-ui` and open http://127.0.0.1:5000 to browse them. Runs are tagged with the git
+commit and whether the working tree was dirty.
 
-- **MLflow** (local, `mlflow.db`): `make mlflow-ui`, then open http://127.0.0.1:5000.
-- **Weights & Biases** runs *offline* by default, so nothing is uploaded and no account is
-  needed. To publish: `wandb login` once, then either run with `WANDB_MODE=online` or upload past
-  runs with `wandb sync wandb/offline-run-*`.
-- **W&B Sweeps** (Bayesian search, needs a login): `make sweep-als`, then start the
-  `wandb agent ...` command it prints. The local grid (`make experiments`) needs no account.
-  Sweeps also select on the tune users, so re-check any sweep winner before trusting it.
-- MLflow runs are tagged with the git commit (and whether the tree was dirty). Note that
-  `wandb sync` uploads run metadata such as hostname and file paths.
+W&B runs offline by default, so nothing gets uploaded and you don't need an account. To publish,
+run `wandb login` once, then either set `WANDB_MODE=online` or upload past runs with
+`wandb sync wandb/offline-run-*`. Keep in mind that `wandb sync` uploads run metadata such as the
+hostname and file paths.
 
-## Checkpointing and saved models
+For a Bayesian search with W&B Sweeps (this one does need a login), run `make sweep-als` and
+start the `wandb agent ...` command it prints. The local grid in `make experiments` doesn't need
+an account. Sweeps also select on the tune users, so re-check any winner before trusting it.
 
-Long training is resumable, and finished models are kept:
+## Checkpoints and saved models
 
-- **Training checkpoints.** `TwoTowerRecommender.fit(..., checkpoint_path=...)` saves the
-  weights, optimizer state and shuffling state after every epoch; rerunning with the same
-  settings and data continues after the last saved epoch (and reproduces an uninterrupted run
-  exactly on CPU). A checkpoint made for other settings or data is ignored.
-- **Search progress.** `two_tower_search` records every scored (configuration, seed, epoch);
-  if it is interrupted, `dvc repro` picks up where it stopped instead of redoing finished work.
-  The resume state lives in `checkpoints/` and is deleted once the stage succeeds.
-- **Saved models.** The leaderboard saves each trained two-tower member to `models/two_tower/`
-  (a DVC output); `TwoTowerEnsemble.load("models/two_tower")` restores it, features included.
-- **Safe by construction.** Files are written to a temporary name and renamed (a crash never
-  leaves a half-written checkpoint), and read with `torch.load(weights_only=True)`, so opening
-  a checkpoint cannot run code.
+Long training runs can be resumed. `TwoTowerRecommender.fit(..., checkpoint_path=...)` saves the
+weights, optimiser state and shuffling state after every epoch. Rerun with the same settings and
+data and it carries on after the last saved epoch, reproducing an uninterrupted run exactly on
+CPU. A checkpoint made with other settings or data is ignored.
 
-## Evaluation design and limitations
+The `two_tower_search` stage records every scored configuration, seed and epoch. If it's
+interrupted, `dvc repro` picks up where it stopped instead of redoing finished work. That state
+lives in `checkpoints/` and is deleted once the stage succeeds.
+
+The leaderboard saves each trained two-tower model to `models/two_tower/` as a DVC output, and
+`TwoTowerEnsemble.load("models/two_tower")` restores it with its features. Files are written
+under a temporary name and then renamed, so a crash never leaves a half-written checkpoint. They
+are loaded with `torch.load(weights_only=True)`, so opening one can't run arbitrary code.
+
+## How the evaluation is set up, and its limits
 
 | Split | Source | Used for |
 |---|---|---|
-| train | logged feed, before Aug 30 | fitting models and label cut-offs |
-| valid | logged feed, Aug 30 onwards | training-time checks (early stopping) |
+| train | logged feed, before August 30 | fitting models and label cut-offs |
+| valid | logged feed, August 30 onwards | checks during training (early stopping) |
 | tune | fully observed matrix, 20% of users (stable SHA-256 hash) | model selection and EDA |
-| test | fully observed matrix, other 80% of users | final report and A/B simulation only |
+| test | fully observed matrix, the other 80% of users | final report and A/B simulation only |
 
-What this design does and doesn't guarantee:
+A few things this design does and doesn't guarantee:
 
-- **No training on the future, for validation only.** The fully observed matrix spans the same
-  weeks as training. It measures preferences rather than forecasting, and none of its
-  (user, video) pairs appear in training (enforced in `prepare`).
-- **"Fully observed" has a scope.** It covers 3,327 videos (about a third of the catalogue,
-  mostly frequently shown ones) and heavy users, with one reaction per pair recorded in a feed.
-  The A/B simulation can only recommend from these videos, and its results describe these users.
-- **Users differ a lot in how much they watch**, even after the duration fix, so pooled metrics
-  like overall AUC mostly measure *which users* engage. Ranking metrics are computed per user.
-- **The test users are never opened** during analysis; the EDA uses the tune users only.
-- **Training noise is part of the uncertainty.** One two-tower training run varies by about
-  ±0.006 NDCG@10 between seeds, which the user-bootstrap intervals do not include. Searches
-  select on seed averages and the leaderboard reports the seed spread.
-- **Selection optimism.** ALS and the two-tower model were tuned on the tune users; the
-  searches estimate how much that flatters them, and the test users give the final numbers.
-- **User profile features** (activity level, follower counts) come with the dataset and may
+- The fully observed matrix covers the same weeks as training, so it measures preferences rather
+  than forecasting the future. None of its (user, video) pairs appear in training, and `prepare`
+  enforces that.
+- "Fully observed" has limits. It covers 3,327 videos, about a third of the catalogue and mostly
+  frequently shown ones, and relatively heavy users, with one recorded reaction per pair. The A/B
+  simulation can only recommend from those videos, and its results describe those users.
+- Users differ a lot in how much they watch, even after the duration fix, so pooled metrics like
+  overall AUC mostly measure which users engage. That's why the ranking metrics are per user.
+- I never looked at the test users during analysis. The EDA only uses the tune users.
+- Training noise adds uncertainty the intervals don't include. A single two-tower run varies by
+  about 0.006 NDCG@10 between seeds, so the searches select on seed averages and the leaderboard
+  reports the spread.
+- ALS and the two-tower model were tuned on the tune users. The searches estimate how much that
+  flatters them, and the test users give the final numbers.
+- The user profile features that come with the dataset (activity level, follower counts) may
   summarise the whole collection period, including weeks that overlap the evaluation matrix.
-  They are user-level, not (user, video) reactions, so they cannot leak a label, but they are
-  not strictly "as of" the training cut-off.
-- **The re-ranker learns from logged views.** Only part of its gain on them (+0.043) carries
-  over to the fully observed test users (+0.017). Exposure bias and a time shift between the
-  validation week and the earlier weeks may both contribute; they were not separated.
-- **The A/B tests are a replay, not a live experiment.** Each user's reaction to a video was
-  recorded once, in a real feed. A session built by a new policy would change what the user saw
-  next (position, fatigue, novelty), and a replay cannot capture that. Results describe these
-  1,112 heavy users and these 3,327 videos.
-- **Cold-start videos are not evaluated.** The video tower can score a video it never saw in
-  training (from its categories and length), but every tune/test candidate has training views,
-  so that ability is tested on synthetic data only.
+  They describe users rather than reactions to videos, so they can't leak a label, but they
+  aren't strictly as of the training cut-off.
+- The re-ranker learns from logged views, and only part of its gain there (0.043) carries over
+  to the test users (0.017). Exposure bias and a shift in time between the validation week and
+  the earlier weeks could both explain that, and I didn't separate them.
+- The A/B tests replay recorded reactions rather than running live. Each reaction was recorded
+  once, in a real feed. A session from a new policy would change what the user saw next
+  (position, fatigue, novelty), and a replay can't capture that.
+- Cold-start videos aren't evaluated. The video tower can score a video it never saw in training
+  from its categories and length, but every tune and test candidate has training views, so that
+  ability is only tested on synthetic data.
 
 ## Data notes
 
-Findings from building the `prepare` stage (full numbers in `reports/data_summary.json`):
+These came up while building the `prepare` stage. The full numbers are in
+`reports/data_summary.json`.
 
-- **No train/eval leakage.** None of the 4.68M (user, video) pairs in the evaluation matrix
-  appear in the training matrix. The pipeline enforces this and refuses to write if it breaks.
-- **Referential integrity.** Every user and video in both interaction matrices exists in the
-  user and video tables; also enforced by the pipeline.
-- **Duplicate logs.** 968k rows (7.7%) of the training matrix are duplicate log entries and are
-  dropped; ~2.2k of them are the same event filed under two daily partitions (the source
-  `date` column is a log-partition label, not the event date). Re-watches (same pair,
+- None of the 4.68M (user, video) pairs in the evaluation matrix appear in the training matrix.
+  The pipeline checks this and refuses to write its output if it ever breaks.
+- Every user and video in both interaction matrices exists in the user and video tables, which
+  the pipeline also enforces.
+- 968k rows (7.7%) of the training matrix are duplicate log entries and get dropped. About 2.2k
+  of them are the same event filed under two daily partitions, because the source `date` column
+  is a log-partition label rather than the date of the event. Re-watches (the same pair at a
   different time) are kept.
-- **Extreme watch ratios.** Median `watch_ratio` is ~0.73 but the max is 573 (videos left
-  looping). Kept as-is in the data layer; capped during modelling.
-- **Missing timestamps.** 3.9% of evaluation rows have no time; the schema allows this there
-  and forbids it in training data.
-- **Timezone.** Source times are Asia/Shanghai local; stored as a timezone-aware `event_time`
+- The median `watch_ratio` is about 0.73, but the maximum is 573, from videos left
+  looping. The data layer keeps these values as they are, and modelling caps them.
+- 3.9% of evaluation rows have no timestamp. The schema allows that there and forbids it in the
+  training data.
+- Source times are local Asia/Shanghai time. They're stored as a timezone-aware `event_time`
   that reproduces the source `time` column exactly.
-- **Not ingested (yet).** `social_network.csv` (472 users with friend lists) is skipped until a
-  model needs it.
+- `social_network.csv` (472 users with friend lists) isn't ingested, since no model uses it yet.
 
-## Project structure
+## Project layout
 
 ```
-├── dvc.yaml / dvc.lock      # pipeline definition + pinned output hashes
-├── params.yaml              # every tunable setting, read by DVC and recsys.config
+├── dvc.yaml / dvc.lock      # pipeline definition and pinned output hashes
+├── params.yaml              # every setting, read by DVC and recsys.config
 ├── src/recsys/
 │   ├── config.py            # typed, validated access to params.yaml
-│   ├── io.py                # shared parquet / JSON writers
+│   ├── io.py                # shared parquet and JSON writers
 │   ├── hashing.py           # stable SHA-256 user assignment (tune/test, A/B arms)
 │   ├── data/
-│   │   ├── features.py      # label-free user and video feature tables
+│   │   ├── features.py      # label-free user and video features
 │   │   ├── download.py      # checksummed, atomic download
-│   │   ├── prepare.py       # clean, leakage-check, validate, write parquet
+│   │   ├── prepare.py       # clean, check for leakage, validate, write parquet
 │   │   ├── schemas.py       # pandera data contracts
 │   │   ├── labels.py        # duration-debiased relevance labels
-│   │   ├── split.py         # train/valid/tune/test split + labeling stage
+│   │   ├── split.py         # train/valid/tune/test split and labelling
 │   │   └── categories.py    # English names for the Chinese category labels
-│   ├── tracking.py          # MLflow + W&B behind one interface
+│   ├── tracking.py          # MLflow and W&B behind one interface
 │   ├── checkpointing.py     # fingerprints, atomic writes, resumable progress logs
 │   ├── evaluation/
-│   │   ├── ranking.py       # per-user metrics, bootstrap CIs, paired comparisons
+│   │   ├── ranking.py       # per-user metrics, bootstrap intervals, paired comparisons
 │   │   └── concentration.py # Gini, Lorenz curve, top-k share
-│   ├── models/              # random, popularity, category affinity, ALS (Recommender protocol)
-│   │   └── two_tower/       # encoding, towers + losses, training, checkpoints, seed ensemble
+│   ├── models/              # random, popularity, category affinity, ALS
+│   │   └── two_tower/       # encoding, towers and losses, training, checkpoints, ensembles
 │   ├── reranking/           # ranking features, LightGBM ranker, two-stage pipeline
-│   ├── abtest/              # Welch, CUPED, power, SRM, mSPRT; sessions; simulated experiments
-│   ├── experiments/         # searches, leaderboard, retrieval, re-ranker, test evaluation, A/B (DVC stages)
-│   ├── demo/                # demo tables (DVC stage), loaders, A/B lab, charts, Streamlit glue
+│   ├── abtest/              # A/B statistics, sessions and simulated experiments
+│   ├── experiments/         # the DVC stages from the searches to the A/B tests
+│   ├── demo/                # demo tables, loaders, the A/B lab, charts, Streamlit glue
 │   └── viz/
-│       └── style.py         # chart style with a colorblind-safe palette
-├── app/                     # Streamlit demo: entry point and pages (`make demo`)
-├── notebooks/               # jupytext .py sources + executed .ipynb
+│       └── style.py         # chart style with a colourblind-safe palette
+├── app/                     # Streamlit demo (`make demo`)
+├── notebooks/               # jupytext .py sources and executed .ipynb
 ├── sweeps/                  # W&B sweep configs
-├── tests/                   # synthetic fixtures; no network or real data needed
-├── reports/                 # git-tracked pipeline metrics and figures
+├── tests/                   # synthetic fixtures, no network or real data needed
+├── reports/                 # pipeline metrics and figures, kept in git
 ├── models/                  # trained models (DVC outputs, not in git)
-└── checkpoints/             # resume state of interrupted training (temporary, not in git)
+└── checkpoints/             # resume state for interrupted training (temporary, not in git)
 ```
-
-## Roadmap
-
-0. **Setup & data pipeline** (done)
-1. **EDA, debiased labels and train/validation split** (done)
-2. **Evaluation harness, popularity and ALS baselines, MLflow + W&B tracking** (done)
-3. **Two-tower neural model, category-affinity baseline, feature pipeline** (done)
-4. **Two-stage pipeline: LightGBM re-ranker with feature engineering and SHAP** (done)
-5. **Final test evaluation and A/B testing framework on the fully observed matrix** (done)
-6. **Streamlit demo: leaderboard, user explorer and interactive A/B lab** (done)
 
 ## License
 
-Code: [MIT](LICENSE). The KuaiRec data is not redistributed here; it is downloaded from Zenodo
-under its own license (below).
+The code is MIT licensed (see [LICENSE](LICENSE)). The KuaiRec data isn't included in this
+repository. The pipeline downloads it from Zenodo, where it's published under its own license.
 
-## Dataset & citation
+## Dataset and citation
 
 KuaiRec is released under [CC BY 4.0](https://zenodo.org/records/18164998). If you use it,
-cite the original paper:
+please cite the original paper:
 
 > Chongming Gao, Shijun Li, Wenqiang Lei, Jiawei Chen, Biao Li, Peng Jiang, Xiangnan He,
 > Jiaxin Mao, Tat-Seng Chua. *KuaiRec: A Fully-observed Dataset and Insights for Evaluating
