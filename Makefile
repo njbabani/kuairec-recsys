@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: help setup data features eda results experiments demo-data demo mlflow-ui sweep-als pipeline test lint format check
+.PHONY: help setup data features eda results experiments demo-data demo clean-cache mlflow-ui sweep-als pipeline test lint format check
 
 help: ## List available commands
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*## "}; {printf "  %-12s %s\n", $$1, $$2}'
@@ -30,6 +30,9 @@ demo-data: ## Build the Streamlit demo's tables (DVC; runs any missing pipeline 
 
 demo: ## Launch the Streamlit demo at http://localhost:8501
 	uv run streamlit run app/streamlit_app.py
+
+clean-cache: ## Delete DVC cache entries the current pipeline no longer uses
+	uv run dvc gc --workspace --force
 
 mlflow-ui: ## Browse tracked runs at http://127.0.0.1:5000
 	uv run mlflow ui --backend-store-uri sqlite:///mlflow.db
